@@ -1,6 +1,7 @@
 mod cartridge;
+mod rom;
 
-use crate::cartridge::Cartridge;
+use crate::rom::cartridge::Cartridge;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

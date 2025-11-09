@@ -1,16 +1,5 @@
-use std::collections::HashMap;
-use std::fs;
-use std::io;
-
 use num_enum;
-
-#[derive(Debug)]
-pub struct Cartridge {
-    file_name: String,
-    rom_size: u32,
-    rom_data: Vec<u8>,
-    pub rom_header: RomHeader,
-}
+use std::collections::HashMap;
 
 // From 0x0100 - 0x014F
 #[derive(Debug)]
@@ -27,7 +16,7 @@ pub struct RomHeader {
     destination_code: DestinationCode, //0x014A
     old_license_code: OldLicenseCode, // 0x14B
     mask_rom_version_number: u8,    // 0x014C
-    header_checksum: u8,            // 0x014D
+    pub(crate) header_checksum: u8, // 0x014D
     global_checksum: u16,           // 0x014E - 0x014F
 }
 
@@ -190,6 +179,7 @@ enum OldLicenseCode {
     Ljn3 = 0xFF,
 }
 
+use std::io;
 use std::sync::LazyLock;
 // TODO: There might be a better way to do this, this works for now but lifetimes are kind of yucky and I don't want to deal with them here...
 static NEW_LICENSE_CODES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
@@ -261,40 +251,6 @@ static NEW_LICENSE_CODES: LazyLock<HashMap<&'static str, &'static str>> = LazyLo
     ])
 });
 
-impl Cartridge {
-    pub fn from_file(path: &str) -> io::Result<Self> {
-        let rom_data = fs::read(path)?;
-        let rom_size = rom_data.len() as u32;
-
-        let rom_header = RomHeader::parse(&rom_data)?;
-
-        Ok(Self {
-            file_name: path.to_string(),
-            rom_size,
-            rom_data,
-            rom_header,
-        })
-    }
-
-    pub fn read() {
-        panic!("Not implemented yet!");
-    }
-
-    pub fn validate_header_checksum(&self) -> bool {
-        let mut computed_checksum: u8 = 0;
-
-        for i in 0x0134..(0x014C + 1) {
-            computed_checksum = computed_checksum.wrapping_sub(self.rom_data[i] + 1);
-        }
-
-        if computed_checksum != self.rom_header.header_checksum {
-            panic!("Header checksum is invalid!!!");
-        }
-
-        return true;
-    }
-}
-
 impl RomHeader {
     pub fn parse(rom: &Vec<u8>) -> io::Result<Self> {
         let logo = rom[0x0104..(0x0133 + 1)].try_into().unwrap();
@@ -347,5 +303,27 @@ impl RomHeader {
             header_checksum,
             global_checksum,
         });
+    }
+
+    /**
+     * Get RAM size in kilobytes
+     */
+    pub fn get_ram_size(self) -> u8 {
+        match self.ram_size {
+            3 => 32,
+            4 => 128,
+            5 => 64,
+            1 => 0,
+            0 => 0,
+            _ => panic!("Unexpected ram size, there was a problem parsing the header."),
+        }
+    }
+
+    pub fn get_cartridge_type(self) {
+        unimplemented!("Get cartridge type");
+    }
+
+    pub fn get_rom_size(self) {
+        unimplemented!("Get cartridge type");
     }
 }
