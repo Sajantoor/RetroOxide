@@ -88,19 +88,125 @@ impl CPU {
         self.cycles += 1;
     }
 
-    fn add(&mut self, i: u8) {
+    fn add_helper(&mut self, i: u8, should_carry: bool) {
         // Add the value in r8
-        let value_in_register: u16 = self.registers.get_register_from_table_r(i).into();
+        let value: u16 = self.registers.get_register_from_table_r(i).into();
         let a_value = self.registers.a;
+        let carry_value: u16 = if should_carry {
+            self.registers.get_carry_flag() as u16
+        } else {
+            0
+        };
 
-        let result: u16 = value_in_register + (a_value as u16);
+        let result: u16 = value + (a_value as u16) + carry_value;
 
         self.registers.set_carry_flag(result > 0xFF);
         self.registers.set_zero_flag(result == 0);
         self.registers.set_substraction_flag(false);
         // Check if there is a carry from bit 3 to bit 4 by masking the lower nibble and summing them.
+        // Note: Carry_value is not masked since carry is 0-1
+        self.registers.set_half_carry_flag(
+            ((a_value & 0xF) + (value as u8 & 0xF) + (carry_value as u8)) > 0xF,
+        );
+
+        // Set value in A register by truncating the value, as does the truncation
+        self.registers.a = result as u8;
+        self.cycles += 1;
+    }
+
+    fn add(&mut self, i: u8) {
+        self.add_helper(i, false);
+    }
+
+    fn adc(&mut self, i: u8) {
+        self.add_helper(i, true);
+    }
+
+    fn subtract_helper(&mut self, i: u8, should_carry: bool) {
+        let value: u16 = self.registers.get_register_from_table_r(i).into();
+        let a_value = self.registers.a;
+        let carry_value: u16 = if should_carry {
+            self.registers.get_carry_flag() as u16
+        } else {
+            0
+        };
+
+        // TODO: I'm not sure if I can just cast it. I think I can.
+        let result: i16 = (a_value as i16) - (value as i16) - (carry_value as i16);
+        self.registers.set_carry_flag(result < 0);
+        self.registers.set_zero_flag((result & 0xFF) == 0);
+        self.registers.set_substraction_flag(true);
+        // Check if there is a borrow from bit 4 to bit 3 by masking the
+        self.registers.set_half_carry_flag(
+            ((a_value & 0xF) as i8 - (value as i8 & 0xF) - (carry_value as i8)) < 0,
+        );
+
+        self.registers.a = result as u8;
+        self.cycles += 1;
+    }
+
+    fn sub(&mut self, i: u8) {
+        self.subtract_helper(i, false);
+    }
+
+    fn sbc(&mut self, i: u8) {
+        self.subtract_helper(i, true);
+    }
+
+    fn and(&mut self, i: u8) {
+        // AND A,r8
+        // Set A to the bitwise AND between the value in r8 and A.
+        let value = self.registers.get_register_from_table_r(i);
+        self.registers.a = self.registers.a & value;
+
+        self.registers.set_zero_flag(self.registers.a == 0);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(true);
+        self.registers.set_carry_flag(false);
+
+        self.cycles += 1;
+    }
+
+    fn xor(&mut self, i: u8) {
+        // XOR A,r8
+        // Set A to the bitwise XOR between the value in r8 and A.
+
+        let value = self.registers.get_register_from_table_r(i);
+        self.registers.a = self.registers.a ^ value;
+
+        self.registers.set_zero_flag(self.registers.a == 0);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+        self.registers.set_carry_flag(false);
+
+        self.cycles += 1;
+    }
+
+    fn or(&mut self, i: u8) {
+        // OR A,r8
+        // Set A to the bitwise OR between the value in r8 and A.
+        let value = self.registers.get_register_from_table_r(i);
+        self.registers.a = self.registers.a | value;
+
+        self.registers.set_zero_flag(self.registers.a == 0);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+        self.registers.set_carry_flag(false);
+
+        self.cycles += 1;
+    }
+
+    fn cp(&mut self, i: u8) {
+        // compare the value in A with the value in r8.
+        // This subtracts the value in r8 from A and sets flags accordingly, but discards the result.
+        let value = self.registers.get_register_from_table_r(i);
+        let result: i8 = (self.registers.a as i8) - (value as i8);
+
+        self.registers.set_zero_flag(result == 0);
+        self.registers.set_substraction_flag(true);
         self.registers
-            .set_half_carry_flag(((a_value & 0xF) + (value_in_register as u8 & 0xF)) > 0xF);
+            .set_half_carry_flag(((self.registers.a & 0xF) as i8) - ((value & 0xF) as i8) < 0);
+        self.registers.set_carry_flag(result < 0);
 
         self.cycles += 1;
     }
