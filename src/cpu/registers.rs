@@ -27,6 +27,24 @@ impl Registers {
         self.c.set((value & 0xFF) as u8);
     }
 
+    pub fn get_de(&self) -> u16 {
+        (self.d.get() as u16) << 8 | self.e.get() as u16
+    }
+
+    pub fn set_de(&self, value: u16) {
+        self.d.set(((value & 0xFF00) >> 8) as u8);
+        self.e.set((value & 0xFF) as u8);
+    }
+
+    pub fn get_hl(&self) -> u16 {
+        (self.h.get() as u16) << 8 | self.l.get() as u16
+    }
+
+    pub fn set_hl(&self, value: u16) {
+        self.h.set(((value & 0xFF00) >> 8) as u8);
+        self.l.set((value & 0xFF) as u8);
+    }
+
     /**
          *
         Table "r"
@@ -47,6 +65,39 @@ impl Registers {
                 unimplemented!("Get value from memory at address HL");
             }
             7 => &self.a,
+            _ => panic!(
+                "This should be unreachable since i has a 4 bit range, but got: {:?}",
+                i
+            ),
+        }
+    }
+
+    /**
+        Table "rp"
+
+        Register pairs featuring SP
+        Index	0	1	2	3
+        Value	BC	DE	HL	SP
+    */
+    pub fn get_register_from_table_rp(&self, i: u8) -> u16 {
+        match i {
+            0 => self.get_bc(),
+            1 => self.get_de(),
+            2 => self.get_hl(),
+            3 => self.sp.get(),
+            _ => panic!(
+                "This should be unreachable since i has a 4 bit range, but got: {:?}",
+                i
+            ),
+        }
+    }
+
+    pub fn set_register_from_table_rp(&self, i: u8, value: u16) {
+        match i {
+            0 => self.set_bc(value),
+            1 => self.set_de(value),
+            2 => self.set_hl(value),
+            3 => self.sp.set(value),
             _ => panic!(
                 "This should be unreachable since i has a 4 bit range, but got: {:?}",
                 i

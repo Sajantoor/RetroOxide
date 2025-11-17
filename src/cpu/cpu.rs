@@ -31,7 +31,7 @@ impl CPU {
         let y = opcode & 0x38; // bits 5-3
         let z = opcode & 0x07; // bits 2-0
         let p = opcode & 0x18; // bits 5-4
-        let q = y & 1; // y modulo 2
+        let q = y & 1 == 0; // y modulo 2
 
         // fallback to an "invalid" instruction is NOP
         match x {
@@ -43,7 +43,13 @@ impl CPU {
 
                 2 => {}
 
-                3 => {}
+                3 => {
+                    if q == true {
+                        self.inc_16(p);
+                    } else {
+                        self.dec_16(p);
+                    }
+                }
 
                 4 => {
                     let register = self.registers.get_register_from_table_r(y);
@@ -261,5 +267,19 @@ impl CPU {
                 .wrapping_add(1),
         );
         self.cycles.set(self.cycles.get() + 1);
+    }
+
+    fn dec_16(&self, i: u8) {
+        let value = self.registers.get_register_from_table_rp(i);
+        self.registers
+            .set_register_from_table_rp(i, value.wrapping_sub(1));
+        self.cycles.set(self.cycles.get() + 2);
+    }
+
+    fn inc_16(&self, i: u8) {
+        let value = self.registers.get_register_from_table_rp(i);
+        self.registers
+            .set_register_from_table_rp(i, value.wrapping_add(1));
+        self.cycles.set(self.cycles.get() + 2);
     }
 }
