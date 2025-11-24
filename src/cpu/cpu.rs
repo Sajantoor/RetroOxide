@@ -39,23 +39,32 @@ impl CPU {
             0 => match z {
                 0 => match y {
                     0 => self.nop(),
-                    // 1 => self.load()
+                    1 => {
+                        // TODO: Next argument
+                        let nn: &mut u16 = &mut 0x01;
+                        load_16(nn, self.registers.sp.get());
+                    }
                     2 => self.stop(),
                     3 => self.jr(0x01),
-
-                    // 3 => self.jp(d),
                     4..7 => {
-                        // self.jp_conditional(y, d);
-                        // self.jr_conditional(y, 0x01);
+                        let d: i8 = 0x01;
+                        self.jr_conditional(d, y - 4);
                     }
                     _ => panic!("Y has range 4 - 7, got {:?}", y),
                 },
 
                 1 => {
                     match q {
-                        // false => self.load(rp[p], nn);
-                        // true => self.add(HL, rp[p])
-                        _ => todo!(),
+                        false => {
+                            // Load instruction:
+                            let nn: u16 = 0x01;
+                            self.set_register_from_table_rp(p, nn);
+                        }
+                        true => {
+                            // Add instruction
+                            let value = self.get_register_from_table_rp(p);
+                            self.add_hl(value);
+                        }
                     }
                 }
 
@@ -76,7 +85,9 @@ impl CPU {
 
                 // // TODO: 0x1 is supposed to be an intermediate
                 6 => load(self.get_register_from_table_r(y), 0x1),
-                7 => {}
+                7 => {
+                    // rotations and flag instructions
+                }
 
                 _ => panic!("Z has range 0 - 7, got {:?}", z),
             },
@@ -90,7 +101,7 @@ impl CPU {
                     let y = self.get_register_from_table_r(y);
 
                     load(y, z);
-                    self.cycles.set(self.cycles.get() + 1);
+                    self.increment_cycles(1);
                 }
             }
 
@@ -137,6 +148,7 @@ impl CPU {
             5 => self.registers.l.get_mut(),
             6 => {
                 // (HL), cycles need to go up by 1 as well
+                self.increment_cycles(1);
                 unimplemented!("Get value from memory at address HL");
             }
             7 => self.registers.a.get_mut(),
@@ -181,12 +193,12 @@ impl CPU {
     }
 
     fn nop(&mut self) {
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn halt(&mut self) {
         unimplemented!();
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn stop(&self) {
@@ -197,7 +209,48 @@ impl CPU {
         // get current pc count and add n
         let updated_pc = (self.registers.pc.get() as i16) + n;
         self.registers.pc.set(updated_pc as u16);
-        self.cycles.set(self.cycles.get() + 3);
+        self.increment_cycles(3);
+    }
+
+    fn jr_conditional(&self, d: i8, condition: u8) {
+        // Although relative jump instructions are traditionally shown with a 16-bit address for an operand, here they will take the form JR/DJNZ d, where d is the signed 8-bit displacement that follows (as this is how they are actually stored). The jump's final address is obtained by adding the displacement to the instruction's address plus 2.
+        let displacement: i16 = d as i16 + 2;
+
+        match condition {
+            0 => {
+                // Check if not zero (NZ)
+                if !self.registers.get_zero_flag() {
+                    self.jr(displacement);
+                } else {
+                    self.increment_cycles(2);
+                }
+            }
+            1 => {
+                // Check if zero (Z)
+                if self.registers.get_zero_flag() {
+                    self.jr(displacement);
+                } else {
+                    self.increment_cycles(2);
+                }
+            }
+            2 => {
+                // Check if not carry (NC)
+                if !self.registers.get_carry_flag() {
+                    self.jr(displacement);
+                } else {
+                    self.increment_cycles(2);
+                }
+            }
+            3 => {
+                // Check if carry (C)
+                if self.registers.get_carry_flag() {
+                    self.jr(displacement);
+                } else {
+                    self.increment_cycles(2);
+                }
+            }
+            _ => panic!("JR invalid condition {:?}", condition),
+        }
     }
 
     fn add_helper(&mut self, i: u8, should_carry: bool) {
@@ -223,7 +276,7 @@ impl CPU {
 
         // Set value in A register by truncating the value, as does the truncation
         self.registers.a.set(result as u8);
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn add(&mut self, i: u8) {
@@ -232,6 +285,10 @@ impl CPU {
 
     fn adc(&mut self, i: u8) {
         self.add_helper(i, true);
+    }
+
+    fn add_hl(&mut self, i: u16) {
+        unimplemented!();
     }
 
     fn subtract_helper(&mut self, i: u8, should_carry: bool) {
@@ -254,7 +311,7 @@ impl CPU {
         );
 
         self.registers.a.set(result as u8);
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn sub(&mut self, i: u8) {
@@ -277,7 +334,7 @@ impl CPU {
         self.registers.set_half_carry_flag(true);
         self.registers.set_carry_flag(false);
 
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn xor(&mut self, i: u8) {
@@ -292,7 +349,7 @@ impl CPU {
         self.registers.set_half_carry_flag(false);
         self.registers.set_carry_flag(false);
 
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn or(&mut self, i: u8) {
@@ -308,7 +365,7 @@ impl CPU {
         self.registers.set_half_carry_flag(false);
         self.registers.set_carry_flag(false);
 
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn cp(&mut self, i: u8) {
@@ -325,34 +382,42 @@ impl CPU {
         );
         self.registers.set_carry_flag(result < 0);
 
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn dec(&mut self, i: u8) {
         let pointer = self.get_register_from_table_r(i);
         *pointer = pointer.wrapping_add(1);
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn inc(&mut self, i: u8) {
         let pointer = self.get_register_from_table_r(i);
         *pointer = pointer.wrapping_add(1);
-        self.cycles.set(self.cycles.get() + 1);
+        self.increment_cycles(1);
     }
 
     fn dec_16(&self, i: u8) {
         let value = self.get_register_from_table_rp(i);
         self.set_register_from_table_rp(i, value.wrapping_sub(1));
-        self.cycles.set(self.cycles.get() + 2);
+        self.increment_cycles(2);
     }
 
     fn inc_16(&self, i: u8) {
         let value = self.get_register_from_table_rp(i);
         self.set_register_from_table_rp(i, value.wrapping_add(1));
-        self.cycles.set(self.cycles.get() + 2);
+        self.increment_cycles(2);
+    }
+
+    fn increment_cycles(&self, i: usize) {
+        self.cycles.set(self.cycles.get() + i);
     }
 }
 
 fn load(dest: &mut u8, source: u8) {
+    *dest = source;
+}
+
+fn load_16(dest: &mut u16, source: u16) {
     *dest = source;
 }
