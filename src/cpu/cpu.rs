@@ -37,11 +37,31 @@ impl CPU {
         match x {
             // Relative jumps and assorted ops
             0 => match z {
-                0 => {}
+                0 => match y {
+                    0 => self.nop(),
+                    // 1 => self.load()
+                    2 => self.stop(),
+                    3 => self.jr(0x01),
 
-                1 => {}
+                    // 3 => self.jp(d),
+                    4..7 => {
+                        // self.jp_conditional(y, d);
+                        // self.jr_conditional(y, 0x01);
+                    }
+                    _ => panic!("Y has range 4 - 7, got {:?}", y),
+                },
 
-                2 => {}
+                1 => {
+                    match q {
+                        // false => self.load(rp[p], nn);
+                        // true => self.add(HL, rp[p])
+                        _ => todo!(),
+                    }
+                }
+
+                2 => {
+                    // load instructions
+                }
 
                 3 => {
                     if q == true {
@@ -51,14 +71,11 @@ impl CPU {
                     }
                 }
 
-                4 => {
-                    let register = self.registers.get_register_from_table_r(y);
-                    self.load(register, 1);
-                }
+                4 => self.inc(y),
                 5 => self.dec(y),
 
                 // // TODO: 0x1 is supposed to be an intermediate
-                6 => self.load(self.registers.get_register_from_table_r(y), 0x1),
+                6 => load(self.get_register_from_table_r(y), 0x1),
                 7 => {}
 
                 _ => panic!("Z has range 0 - 7, got {:?}", z),
@@ -69,10 +86,11 @@ impl CPU {
                 if y == 6 && z == 6 {
                     return self.halt();
                 } else {
-                    let y = self.registers.get_register_from_table_r(y);
-                    let z = self.registers.get_register_from_table_r(z).get();
+                    let z = *(self.get_register_from_table_r(z));
+                    let y = self.get_register_from_table_r(y);
 
-                    return self.load(y, z);
+                    load(y, z);
+                    self.cycles.set(self.cycles.get() + 1);
                 }
             }
 
@@ -102,6 +120,66 @@ impl CPU {
         self.nop();
     }
 
+    /**
+         *
+        Table "r"
+        8-bit registers
+        Index	0	1	2	3	4	5	6	    7
+        Value	B	C	D	E	H	L	(HL)	A
+    */
+    pub fn get_register_from_table_r(&mut self, i: u8) -> &mut u8 {
+        match i {
+            0 => self.registers.b.get_mut(),
+            1 => self.registers.c.get_mut(),
+            2 => self.registers.d.get_mut(),
+            3 => self.registers.e.get_mut(),
+            4 => self.registers.h.get_mut(),
+            5 => self.registers.l.get_mut(),
+            6 => {
+                // (HL), cycles need to go up by 1 as well
+                unimplemented!("Get value from memory at address HL");
+            }
+            7 => self.registers.a.get_mut(),
+            _ => panic!(
+                "This should be unreachable since i has a 4 bit range, but got: {:?}",
+                i
+            ),
+        }
+    }
+
+    /**
+        Table "rp"
+
+        Register pairs featuring SP
+        Index	0	1	2	3
+        Value	BC	DE	HL	SP
+    */
+    pub fn get_register_from_table_rp(&self, i: u8) -> u16 {
+        match i {
+            0 => self.registers.get_bc(),
+            1 => self.registers.get_de(),
+            2 => self.registers.get_hl(),
+            3 => self.registers.sp.get(),
+            _ => panic!(
+                "This should be unreachable since i has a 4 bit range, but got: {:?}",
+                i
+            ),
+        }
+    }
+
+    pub fn set_register_from_table_rp(&self, i: u8, value: u16) {
+        match i {
+            0 => self.registers.set_bc(value),
+            1 => self.registers.set_de(value),
+            2 => self.registers.set_hl(value),
+            3 => self.registers.sp.set(value),
+            _ => panic!(
+                "This should be unreachable since i has a 4 bit range, but got: {:?}",
+                i
+            ),
+        }
+    }
+
     fn nop(&mut self) {
         self.cycles.set(self.cycles.get() + 1);
     }
@@ -111,18 +189,20 @@ impl CPU {
         self.cycles.set(self.cycles.get() + 1);
     }
 
-    fn load(&self, y: &Cell<u8>, z: u8) {
-        // Instruction: LD r[y], r[z]
-        // copy the value in the register on the right, into the register in the left
-        y.set(z);
+    fn stop(&self) {
+        unimplemented!();
+    }
 
-        // TODO: Set this value correctly based on addressing mode
-        self.cycles.set(self.cycles.get() + 1);
+    fn jr(&self, n: i16) {
+        // get current pc count and add n
+        let updated_pc = (self.registers.pc.get() as i16) + n;
+        self.registers.pc.set(updated_pc as u16);
+        self.cycles.set(self.cycles.get() + 3);
     }
 
     fn add_helper(&mut self, i: u8, should_carry: bool) {
         // Add the value in r8
-        let value: u16 = (self.registers.get_register_from_table_r(i).get()).into();
+        let value: u16 = (*self.get_register_from_table_r(i)).into();
         let a_value = self.registers.a.get();
         let carry_value: u16 = if should_carry {
             self.registers.get_carry_flag() as u16
@@ -155,7 +235,7 @@ impl CPU {
     }
 
     fn subtract_helper(&mut self, i: u8, should_carry: bool) {
-        let value: u16 = self.registers.get_register_from_table_r(i).get().into();
+        let value: u16 = (*self.get_register_from_table_r(i)).into();
         let a_value = self.registers.a.get();
         let carry_value: u16 = if should_carry {
             self.registers.get_carry_flag() as u16
@@ -188,7 +268,7 @@ impl CPU {
     fn and(&mut self, i: u8) {
         // AND A,r8
         // Set A to the bitwise AND between the value in r8 and A.
-        let value = self.registers.get_register_from_table_r(i).get();
+        let value = *self.get_register_from_table_r(i);
         let result = self.registers.a.get() & value;
         self.registers.a.set(result);
 
@@ -203,7 +283,7 @@ impl CPU {
     fn xor(&mut self, i: u8) {
         // XOR A,r8
         // Set A to the bitwise XOR between the value in r8 and A.
-        let value = self.registers.get_register_from_table_r(i).get();
+        let value = *self.get_register_from_table_r(i);
         let result = self.registers.a.get() ^ value;
         self.registers.a.set(result);
 
@@ -218,7 +298,7 @@ impl CPU {
     fn or(&mut self, i: u8) {
         // OR A,r8
         // Set A to the bitwise OR between the value in r8 and A.
-        let value = self.registers.get_register_from_table_r(i).get();
+        let value = *self.get_register_from_table_r(i);
         let result = self.registers.a.get() | value;
 
         self.registers.a.set(result);
@@ -234,7 +314,7 @@ impl CPU {
     fn cp(&mut self, i: u8) {
         // compare the value in A with the value in r8.
         // This subtracts the value in r8 from A and sets flags accordingly, but discards the result.
-        let value = self.registers.get_register_from_table_r(i).get();
+        let value = *self.get_register_from_table_r(i);
 
         let result: i8 = (self.registers.a.get() as i8) - (value as i8);
 
@@ -249,37 +329,30 @@ impl CPU {
     }
 
     fn dec(&mut self, i: u8) {
-        self.registers.get_register_from_table_r(i).set(
-            self.registers
-                .get_register_from_table_r(i)
-                .get()
-                .wrapping_sub(1),
-        );
-
+        let pointer = self.get_register_from_table_r(i);
+        *pointer = pointer.wrapping_add(1);
         self.cycles.set(self.cycles.get() + 1);
     }
 
     fn inc(&mut self, i: u8) {
-        self.registers.get_register_from_table_r(i).set(
-            self.registers
-                .get_register_from_table_r(i)
-                .get()
-                .wrapping_add(1),
-        );
+        let pointer = self.get_register_from_table_r(i);
+        *pointer = pointer.wrapping_add(1);
         self.cycles.set(self.cycles.get() + 1);
     }
 
     fn dec_16(&self, i: u8) {
-        let value = self.registers.get_register_from_table_rp(i);
-        self.registers
-            .set_register_from_table_rp(i, value.wrapping_sub(1));
+        let value = self.get_register_from_table_rp(i);
+        self.set_register_from_table_rp(i, value.wrapping_sub(1));
         self.cycles.set(self.cycles.get() + 2);
     }
 
     fn inc_16(&self, i: u8) {
-        let value = self.registers.get_register_from_table_rp(i);
-        self.registers
-            .set_register_from_table_rp(i, value.wrapping_add(1));
+        let value = self.get_register_from_table_rp(i);
+        self.set_register_from_table_rp(i, value.wrapping_add(1));
         self.cycles.set(self.cycles.get() + 2);
     }
+}
+
+fn load(dest: &mut u8, source: u8) {
+    *dest = source;
 }

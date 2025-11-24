@@ -2,15 +2,15 @@ use std::cell::Cell;
 
 pub struct Registers {
     pub a: Cell<u8>,
-    b: Cell<u8>,
-    c: Cell<u8>,
-    d: Cell<u8>,
-    e: Cell<u8>,
-    f: Cell<u8>, // contains the flags (lower of the AF register)
-    h: Cell<u8>,
-    l: Cell<u8>,
-    sp: Cell<u16>,
-    pc: Cell<u16>,
+    pub b: Cell<u8>,
+    pub c: Cell<u8>,
+    pub d: Cell<u8>,
+    pub e: Cell<u8>,
+    pub f: Cell<u8>, // contains the flags (lower of the AF register)
+    pub h: Cell<u8>,
+    pub l: Cell<u8>,
+    pub sp: Cell<u16>,
+    pub pc: Cell<u16>,
 }
 
 impl Registers {
@@ -43,66 +43,6 @@ impl Registers {
     pub fn set_hl(&self, value: u16) {
         self.h.set(((value & 0xFF00) >> 8) as u8);
         self.l.set((value & 0xFF) as u8);
-    }
-
-    /**
-         *
-        Table "r"
-        8-bit registers
-        Index	0	1	2	3	4	5	6	    7
-        Value	B	C	D	E	H	L	(HL)	A
-    */
-    pub fn get_register_from_table_r(&self, i: u8) -> &Cell<u8> {
-        match i {
-            0 => &self.b,
-            1 => &self.c,
-            2 => &self.d,
-            3 => &self.e,
-            4 => &self.h,
-            5 => &self.l,
-            6 => {
-                // (HL), cycles need to go up by 1 as well
-                unimplemented!("Get value from memory at address HL");
-            }
-            7 => &self.a,
-            _ => panic!(
-                "This should be unreachable since i has a 4 bit range, but got: {:?}",
-                i
-            ),
-        }
-    }
-
-    /**
-        Table "rp"
-
-        Register pairs featuring SP
-        Index	0	1	2	3
-        Value	BC	DE	HL	SP
-    */
-    pub fn get_register_from_table_rp(&self, i: u8) -> u16 {
-        match i {
-            0 => self.get_bc(),
-            1 => self.get_de(),
-            2 => self.get_hl(),
-            3 => self.sp.get(),
-            _ => panic!(
-                "This should be unreachable since i has a 4 bit range, but got: {:?}",
-                i
-            ),
-        }
-    }
-
-    pub fn set_register_from_table_rp(&self, i: u8, value: u16) {
-        match i {
-            0 => self.set_bc(value),
-            1 => self.set_de(value),
-            2 => self.set_hl(value),
-            3 => self.sp.set(value),
-            _ => panic!(
-                "This should be unreachable since i has a 4 bit range, but got: {:?}",
-                i
-            ),
-        }
     }
 
     /**
