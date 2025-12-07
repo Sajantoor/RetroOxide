@@ -1,4 +1,5 @@
-mod cartridge;
+mod bus;
+mod cpu;
 mod rom;
 
 use crate::rom::cartridge::Cartridge;

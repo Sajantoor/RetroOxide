@@ -1,5 +1,6 @@
 use std::cell::Cell;
 
+use crate::bus::Bus;
 use crate::cpu::registers::Registers;
 
 pub struct CPU {
@@ -10,7 +11,9 @@ pub struct CPU {
     //     Two T-Edges - 4,194,304 hz
     // M-Cycle (m)
     //     Four T-Cycles - 1,048,576 hz
-    cycles: Cell<usize>, // in M-cycles
+    cycles: Cell<usize>, // in M-cycle
+    bus: Bus,
+    ime_flag: bool,
 }
 
 /**
@@ -21,7 +24,17 @@ impl CPU {
         CPU {
             registers: Registers::new(),
             cycles: Cell::new(0),
+            bus: Bus::new(),
+            ime_flag: false, // IME is unset (interrupts are disabled) when the game starts running.
         }
+    }
+
+    fn next_byte(&mut self) -> u8 {
+        unimplemented!();
+    }
+
+    fn next_word(&mut self) -> u16 {
+        unimplemented!();
     }
 
     // instructions are prefix byte, opcode (byte), displacement byte, intermediate data
@@ -40,14 +53,19 @@ impl CPU {
                 0 => match y {
                     0 => self.nop(),
                     1 => {
-                        // TODO: Next argument
-                        let nn: &mut u16 = &mut 0x01;
-                        load_16(nn, self.registers.sp.get());
+                        // LD (nn), SP
+                        let nn = self.next_word();
+                        let value = self.registers.sp.get();
+                        self.bus.write_word(nn, value);
+                        self.increment_cycles(5);
                     }
                     2 => self.stop(),
-                    3 => self.jr(0x01),
+                    3 => {
+                        let d: i8 = self.next_byte() as i8;
+                        self.jr(d);
+                    }
                     4..7 => {
-                        let d: i8 = 0x01;
+                        let d: i8 = self.next_byte() as i8;
                         self.jr_conditional(d, y - 4);
                     }
                     _ => panic!("Y has range 4 - 7, got {:?}", y),
@@ -57,7 +75,7 @@ impl CPU {
                     match q {
                         false => {
                             // Load instruction:
-                            let nn: u16 = 0x01;
+                            let nn = self.next_word();
                             self.set_register_from_table_rp(p, nn);
                         }
                         true => {
@@ -69,7 +87,34 @@ impl CPU {
                 }
 
                 2 => {
-                    // load instructions
+                    // Load instructions involving A and (BC), (DE), (HL+), (HL-)
+                    let pointer: u16;
+                    match p {
+                        0 => pointer = self.registers.get_bc(),
+                        1 => pointer = self.registers.get_de(),
+                        2 => {
+                            pointer = self.registers.get_hl();
+                            self.registers.set_hl(pointer.wrapping_add(1));
+                        }
+                        3 => {
+                            pointer = self.registers.get_hl();
+                            self.registers.set_hl(pointer.wrapping_sub(1));
+                        }
+                        _ => panic!("P has range 0 - 3, got {:?}", p),
+                    }
+
+                    match q {
+                        false => {
+                            let source = self.registers.a.get();
+                            self.bus.write_byte(pointer, source);
+                            self.increment_cycles(2);
+                        }
+                        true => {
+                            let value = self.bus.read_byte(pointer);
+                            self.registers.a.set(value);
+                            self.increment_cycles(2);
+                        }
+                    }
                 }
 
                 3 => {
@@ -82,9 +127,10 @@ impl CPU {
 
                 4 => self.inc(y),
                 5 => self.dec(y),
-
-                // // TODO: 0x1 is supposed to be an intermediate
-                6 => load(self.get_register_from_table_r(y), 0x1),
+                6 => {
+                    let n = self.next_byte();
+                    load(self.get_register_from_table_r(y), n)
+                }
                 7 => match y {
                     0 => self.rlca(),
                     1 => self.rrca(),
@@ -107,7 +153,6 @@ impl CPU {
                 } else {
                     let z = *(self.get_register_from_table_r(z));
                     let y = self.get_register_from_table_r(y);
-
                     load(y, z);
                     self.increment_cycles(1);
                 }
@@ -131,70 +176,139 @@ impl CPU {
 
             3 => match z {
                 0 => match y {
-                    0..3 => self.ret_conditional(y),
-                    // 4 => LD (0xFF00 + n), A
-                    // 5 => ADD SP, d
-                    // 6 => LD A, (0xFF00 + n)
-                    // LD HL, SP + d
+                    0..4 => self.ret_conditional(y),
+                    4 => {
+                        // LD (0xFF00 + n), A
+                        let n = self.next_byte();
+                        let addr = 0xFF00 + (n as u16);
+                        self.load_to_memory(addr, self.registers.a.get());
+                    }
+                    5 => {
+                        let d = self.next_byte() as i8;
+                        self.add_sp(d);
+                    }
+                    6 => {
+                        // LD A, (0xFF00 + n)
+                        let n = self.next_byte();
+                        let addr = 0xFF00 + (n as u16);
+                        let value = self.bus.read_byte(addr);
+                        self.registers.a.set(value);
+                        self.increment_cycles(2);
+                    }
+                    7 => {
+                        // LD HL, SP + d
+                        let n = self.next_byte() as i16;
+                        let sp = self.registers.sp.get() as i16;
+                        let value = sp + n;
+
+                        self.registers.set_hl(value as u16);
+                        self.increment_cycles(3);
+
+                        // Set flags
+                        self.registers
+                            .set_half_carry_flag(((sp & 0xF) + (n & 0xF)) > 0xF);
+                        self.registers
+                            .set_carry_flag(((sp & 0xFF) + (n & 0xFF)) > 0xFF);
+                        self.registers.set_zero_flag(false);
+                        self.registers.set_substraction_flag(false);
+                    }
                     _ => panic!("Y has range 0 - 7, got {:?}", y),
                 },
                 1 => {
                     if !q {
-                        // self.pop(rp2[p])
+                        self.pop(p);
                     } else {
                         match p {
                             0 => self.ret(),
                             1 => self.reti(),
-                            // 2 => self.jp(hl),
-                            // 3 => LD SP, HL
+                            2 => self.jp(self.registers.get_hl()),
+                            3 => {
+                                // LD SP,HL
+                                let hl = self.registers.get_hl();
+                                self.registers.sp.set(hl);
+                                self.increment_cycles(2);
+                            }
                             _ => panic!("P has range 0 - 4 got {:?}", p),
                         }
                     }
                 }
 
                 2 => match y {
-                    // 0..3 => self.jp_c(nn),
-                    // 4 => LD (oxFF00 + C), A
-                    // 5 => LD (nn), A
-                    // 6 => LD A, (0xFF00 + C)
-                    // 7 => LD A, (nn)
+                    0..4 => {
+                        let nn = self.next_word();
+                        self.jp_cc(nn, y);
+                    }
+                    4 => {
+                        // LD (oxFF00 + C), A
+                        let addr = (self.registers.c.get() as u16) + 0xFF00;
+                        self.load_to_memory(addr, self.registers.a.get());
+                    }
+                    5 => {
+                        // LD (nn), A
+                        let nn = self.next_word();
+                        self.load_to_memory(nn, self.registers.a.get());
+                    }
+                    6 => {
+                        // LD A, (0xFF00 + C)
+                        let addr = (self.registers.c.get() as u16) + 0xFF00;
+                        let value = self.bus.read_byte(addr);
+                        self.registers.a.set(value);
+                        self.increment_cycles(2);
+                    }
+                    7 => {
+                        // LD A, (nn)
+                        let addr = self.next_word();
+                        let value = self.bus.read_byte(addr);
+                        self.registers.a.set(value);
+                        self.increment_cycles(3);
+                    }
                     _ => panic!("Y has range 0 - 7, got {:?}", y),
                 },
                 3 => match y {
-                    // 0 => self.jp(nn),
+                    0 => {
+                        let nn = self.next_word();
+                        self.jp(nn)
+                    }
                     // 1 => CB prefix
-                    // 6 => self.di()
-                    // 7 => self.ei()
+                    2..6 => self.nop(),
+                    6 => self.di(),
+                    7 => self.ei(),
                     _ => self.nop(),
                 },
                 4 => match y {
-                    // 0..3 => self.call_conditional(y, nn),
-                    // 4..7 => self.nop(),
+                    0..4 => {
+                        let nn = self.next_word();
+                        self.call_conditional(nn, y)
+                    }
+                    4..7 => self.nop(),
                     _ => panic!("Y has range 0 - 7, got {:?}", y),
                 },
                 5 => {
                     if !q {
-                        // /self.push(rp2[p])
+                        let value = self.get_register_from_table_rp2(p);
+                        self.push(value)
                     } else if p == 0 {
-                        // self.call(nn)
+                        let nn = self.next_word();
+                        self.call(nn)
                     }
                 }
-
-                6 => match y {
-                    // TODO: Need to be replaced with N
-                    0 => self.add(z),
-                    1 => self.adc(z),
-                    2 => self.sub(z),
-                    3 => self.sbc(z),
-                    4 => self.and(z),
-                    5 => self.xor(z),
-                    6 => self.or(z),
-                    7 => self.cp(z),
-                    _ => panic!(
-                        "Should not be able to reach this value, y only has a range of 0-7, got {:?}",
-                        y
-                    ),
-                },
+                6 => {
+                    let n = self.next_byte();
+                    match y {
+                        0 => self.add(n),
+                        1 => self.adc(n),
+                        2 => self.sub(n),
+                        3 => self.sbc(n),
+                        4 => self.and(n),
+                        5 => self.xor(n),
+                        6 => self.or(n),
+                        7 => self.cp(n),
+                        _ => panic!(
+                            "Should not be able to reach this value, y only has a range of 0-7, got {:?}",
+                            y
+                        ),
+                    }
+                }
                 7 => {
                     // self.rst(y * 8);
                 }
@@ -229,7 +343,8 @@ impl CPU {
             6 => {
                 // (HL), cycles need to go up by 1 as well
                 self.increment_cycles(1);
-                unimplemented!("Get value from memory at address HL");
+                let pointer = self.bus.get_pointer(self.registers.get_hl());
+                return pointer;
             }
             7 => self.registers.a.get_mut(),
             _ => panic!(
@@ -272,6 +387,30 @@ impl CPU {
         }
     }
 
+    pub fn get_register_from_table_rp2(&self, i: u8) -> u16 {
+        match i {
+            0..3 => self.get_register_from_table_rp(i),
+            3 => self.registers.get_af(),
+            _ => panic!(
+                "This should be unreachable since i has a 4 bit range, but got: {:?}",
+                i
+            ),
+        }
+    }
+
+    pub fn set_register_from_table_rp2(&self, i: u8, value: u16) {
+        match i {
+            0 => self.registers.set_bc(value),
+            1 => self.registers.set_de(value),
+            2 => self.registers.set_hl(value),
+            3 => self.registers.set_af(value),
+            _ => panic!(
+                "This should be unreachable since i has a 4 bit range, but got: {:?}",
+                i
+            ),
+        }
+    }
+
     fn nop(&mut self) {
         self.increment_cycles(1);
     }
@@ -285,51 +424,72 @@ impl CPU {
         unimplemented!();
     }
 
-    fn jr(&self, n: i16) {
+    fn jr(&self, n: i8) {
+        // Although relative jump instructions are traditionally shown with a 16-bit address for an operand, here they will take the form JR/DJNZ d, where d is the signed 8-bit displacement that follows (as this is how they are actually stored). The jump's final address is obtained by adding the displacement to the instruction's address plus 2.
+        let displacement: i16 = n as i16 + 2;
         // get current pc count and add n
-        let updated_pc = (self.registers.pc.get() as i16) + n;
+        let updated_pc = (self.registers.pc.get() as i16) + displacement;
         self.registers.pc.set(updated_pc as u16);
         self.increment_cycles(3);
     }
 
-    fn jr_conditional(&self, d: i8, condition: u8) {
-        // Although relative jump instructions are traditionally shown with a 16-bit address for an operand, here they will take the form JR/DJNZ d, where d is the signed 8-bit displacement that follows (as this is how they are actually stored). The jump's final address is obtained by adding the displacement to the instruction's address plus 2.
-        let displacement: i16 = d as i16 + 2;
-
+    fn check_condition(&self, condition: u8) -> bool {
         match condition {
             0 => {
                 // Check if not zero (NZ)
-                if !self.registers.get_zero_flag() {
-                    self.jr(displacement);
-                } else {
-                    self.increment_cycles(2);
-                }
+                !self.registers.get_zero_flag()
             }
             1 => {
                 // Check if zero (Z)
-                if self.registers.get_zero_flag() {
-                    self.jr(displacement);
-                } else {
-                    self.increment_cycles(2);
-                }
+                self.registers.get_zero_flag()
             }
             2 => {
                 // Check if not carry (NC)
-                if !self.registers.get_carry_flag() {
-                    self.jr(displacement);
-                } else {
-                    self.increment_cycles(2);
-                }
+                !self.registers.get_carry_flag()
             }
             3 => {
                 // Check if carry (C)
-                if self.registers.get_carry_flag() {
-                    self.jr(displacement);
-                } else {
-                    self.increment_cycles(2);
-                }
+                self.registers.get_carry_flag()
             }
-            _ => panic!("JR invalid condition {:?}", condition),
+            _ => panic!("Condition invalid {:?}", condition),
+        }
+    }
+
+    fn jr_conditional(&self, d: i8, condition: u8) {
+        if self.check_condition(condition) {
+            self.jr(d);
+        } else {
+            self.increment_cycles(2);
+        }
+    }
+
+    fn jp_cc(&mut self, addr: u16, condition: u8) {
+        if self.check_condition(condition) {
+            self.jp(addr);
+        } else {
+            self.increment_cycles(3);
+        }
+    }
+
+    fn jp(&mut self, addr: u16) {
+        self.registers.pc.set(addr);
+        self.increment_cycles(4);
+    }
+
+    fn call(&mut self, addr: u16) {
+        let cycles = self.cycles.get();
+        self.push(addr);
+        self.jp(addr);
+        // TODO: some wasted instructions
+        // since push and jp set cycles, updating here
+        self.cycles.set(cycles + 6);
+    }
+
+    fn call_conditional(&mut self, addr: u16, condition: u8) {
+        if self.check_condition(condition) {
+            self.call(addr);
+        } else {
+            self.increment_cycles(3);
         }
     }
 
@@ -367,7 +527,30 @@ impl CPU {
     }
 
     fn add_hl(&mut self, i: u16) {
-        unimplemented!();
+        let value = self.registers.get_hl();
+        let result: u32 = value as u32 + i as u32;
+
+        self.registers.set_carry_flag(result > 0xFFFF);
+        self.registers
+            .set_half_carry_flag(((value & 0x0FFF) + (i & 0x0FFF)) > 0x0FFF);
+        self.registers.set_substraction_flag(false);
+        self.increment_cycles(2);
+
+        self.registers.set_hl(result as u16);
+    }
+
+    fn add_sp(&mut self, d: i8) {
+        let sp = self.registers.sp.get();
+        let result = (sp as i16).wrapping_add(d as i16);
+        self.registers.sp.set(result as u16);
+
+        self.registers
+            .set_half_carry_flag(((sp & 0xF) + (d as u16 & 0xF)) > 0xF);
+        self.registers
+            .set_carry_flag(((sp & 0xFF) + (d as u16 & 0xFF)) > 0xFF);
+        self.registers.set_zero_flag(false);
+        self.registers.set_substraction_flag(false);
+        self.increment_cycles(4);
     }
 
     fn subtract_helper(&mut self, i: u8, should_carry: bool) {
@@ -583,17 +766,58 @@ impl CPU {
     }
 
     fn ret_conditional(&self, condition: u8) {
-        unimplemented!();
+        if self.check_condition(condition) {
+            self.ret();
+            self.increment_cycles(1);
+        } else {
+            self.increment_cycles(2);
+        }
     }
 
     fn ret(&self) {
         // basically pop pc
-        unimplemented!();
+        let sp = self.registers.sp.get();
+        let value = self.bus.read_word(sp);
+        self.registers.sp.set(sp + 2);
+        self.registers.pc.set(value);
+        self.increment_cycles(4);
     }
 
-    fn reti(&self) {
-        // equivalent to executing EI then RET
-        unimplemented!();
+    fn reti(&mut self) {
+        self.ime_flag = true;
+        self.ret();
+    }
+
+    fn pop(&self, i: u8) {
+        // load the value in sp into the register
+        let sp = self.registers.sp.get();
+        let value = self.bus.read_word(sp);
+        self.registers.sp.set(sp + 2);
+        self.set_register_from_table_rp2(i, value);
+        self.increment_cycles(3);
+    }
+
+    fn push(&mut self, value: u16) {
+        let mut sp = self.registers.sp.get();
+        sp -= 2;
+        self.bus.write_word(sp, value);
+        self.registers.sp.set(sp);
+        self.increment_cycles(4);
+    }
+
+    fn load_to_memory(&mut self, addr: u16, value: u8) {
+        self.bus.write_byte(addr, value);
+        self.increment_cycles(4);
+    }
+
+    fn di(&mut self) {
+        self.ime_flag = false;
+        self.increment_cycles(1);
+    }
+
+    fn ei(&mut self) {
+        self.ime_flag = true;
+        self.increment_cycles(1);
     }
 }
 

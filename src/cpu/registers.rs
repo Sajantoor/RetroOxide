@@ -45,6 +45,15 @@ impl Registers {
         self.l.set((value & 0xFF) as u8);
     }
 
+    pub fn get_af(&self) -> u16 {
+        (self.a.get() as u16) << 8 | self.f.get() as u16
+    }
+
+    pub fn set_af(&self, value: u16) {
+        self.a.set(((value & 0xFF00) >> 8) as u8);
+        self.f.set((value & 0xFF) as u8);
+    }
+
     /**
      * Setters and getters for flags
      */
