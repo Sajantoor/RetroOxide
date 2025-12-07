@@ -85,9 +85,17 @@ impl CPU {
 
                 // // TODO: 0x1 is supposed to be an intermediate
                 6 => load(self.get_register_from_table_r(y), 0x1),
-                7 => {
-                    // rotations and flag instructions
-                }
+                7 => match y {
+                    0 => self.rlca(),
+                    1 => self.rrca(),
+                    2 => self.rla(),
+                    3 => self.rra(),
+                    4 => self.daa(),
+                    5 => self.cpl(),
+                    6 => self.scf(),
+                    7 => self.ccf(),
+                    _ => panic!("Y has range 0 - 7, got {:?}", y),
+                },
 
                 _ => panic!("Z has range 0 - 7, got {:?}", z),
             },
@@ -121,7 +129,79 @@ impl CPU {
                 ),
             },
 
-            3 => {}
+            3 => match z {
+                0 => match y {
+                    0..3 => self.ret_conditional(y),
+                    // 4 => LD (0xFF00 + n), A
+                    // 5 => ADD SP, d
+                    // 6 => LD A, (0xFF00 + n)
+                    // LD HL, SP + d
+                    _ => panic!("Y has range 0 - 7, got {:?}", y),
+                },
+                1 => {
+                    if !q {
+                        // self.pop(rp2[p])
+                    } else {
+                        match p {
+                            0 => self.ret(),
+                            1 => self.reti(),
+                            // 2 => self.jp(hl),
+                            // 3 => LD SP, HL
+                            _ => panic!("P has range 0 - 4 got {:?}", p),
+                        }
+                    }
+                }
+
+                2 => match y {
+                    // 0..3 => self.jp_c(nn),
+                    // 4 => LD (oxFF00 + C), A
+                    // 5 => LD (nn), A
+                    // 6 => LD A, (0xFF00 + C)
+                    // 7 => LD A, (nn)
+                    _ => panic!("Y has range 0 - 7, got {:?}", y),
+                },
+                3 => match y {
+                    // 0 => self.jp(nn),
+                    // 1 => CB prefix
+                    // 6 => self.di()
+                    // 7 => self.ei()
+                    _ => self.nop(),
+                },
+                4 => match y {
+                    // 0..3 => self.call_conditional(y, nn),
+                    // 4..7 => self.nop(),
+                    _ => panic!("Y has range 0 - 7, got {:?}", y),
+                },
+                5 => {
+                    if !q {
+                        // /self.push(rp2[p])
+                    } else if p == 0 {
+                        // self.call(nn)
+                    }
+                }
+
+                6 => match y {
+                    // TODO: Need to be replaced with N
+                    0 => self.add(z),
+                    1 => self.adc(z),
+                    2 => self.sub(z),
+                    3 => self.sbc(z),
+                    4 => self.and(z),
+                    5 => self.xor(z),
+                    6 => self.or(z),
+                    7 => self.cp(z),
+                    _ => panic!(
+                        "Should not be able to reach this value, y only has a range of 0-7, got {:?}",
+                        y
+                    ),
+                },
+                7 => {
+                    // self.rst(y * 8);
+                }
+                _ => {
+                    panic!("Z has range 0 - 7, got {:?}", z);
+                }
+            },
 
             _ => {
                 panic!("Invalid x value: {:?}", x);
@@ -269,7 +349,6 @@ impl CPU {
         self.registers.set_zero_flag(result == 0);
         self.registers.set_substraction_flag(false);
         // Check if there is a carry from bit 3 to bit 4 by masking the lower nibble and summing them.
-        // Note: Carry_value is not masked since carry is 0-1
         self.registers.set_half_carry_flag(
             ((a_value & 0xF) + (value as u8 & 0xF) + (carry_value as u8)) > 0xF,
         );
@@ -411,6 +490,110 @@ impl CPU {
 
     fn increment_cycles(&self, i: usize) {
         self.cycles.set(self.cycles.get() + i);
+    }
+
+    // Rotation instructions
+    fn rlca(&mut self) {
+        let a = self.registers.a.get();
+        // Get the carry bit (bit 7)
+        let carry = (a & 0x80) >> 7;
+        // Shift left by 1 and set bit 0 to carry
+        let result = (a << 1) | carry;
+        self.registers.a.set(result);
+
+        self.registers.set_carry_flag(carry == 1);
+        self.registers.set_zero_flag(false);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+        self.increment_cycles(1);
+    }
+
+    fn rrca(&mut self) {
+        let a = self.registers.a.get();
+        // Get the carry bit (bit 0)
+        let carry = a & 0x01;
+        // Shift right by 1 and set bit 7 to carry
+        let result = (a >> 1) | (carry << 7);
+        self.registers.a.set(result);
+
+        self.registers.set_carry_flag(carry == 1);
+        self.registers.set_zero_flag(false);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+        self.increment_cycles(1);
+    }
+
+    fn rla(&mut self) {
+        let a = self.registers.a.get();
+
+        let carry = self.registers.get_carry_flag() as u8;
+        let new_carry = (a & 0x80) >> 7;
+
+        let result = (a << 1) | carry;
+        self.registers.a.set(result);
+
+        self.registers.set_carry_flag(new_carry == 1);
+        self.registers.set_zero_flag(false);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+        self.increment_cycles(1);
+    }
+
+    fn rra(&mut self) {
+        let a = self.registers.a.get();
+
+        let carry = self.registers.get_carry_flag() as u8;
+        let new_carry = (a & 0x80) >> 7;
+
+        let result = (a >> 1) | (carry << 7);
+        self.registers.a.set(result);
+
+        self.registers.set_carry_flag(new_carry == 1);
+        self.registers.set_zero_flag(false);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+        self.increment_cycles(1);
+    }
+
+    fn daa(&self) {
+        unimplemented!("DAA is unimplemented");
+    }
+
+    fn cpl(&mut self) {
+        let a = self.registers.a.get();
+        self.registers.a.set(a.wrapping_neg());
+        self.registers.set_half_carry_flag(true);
+        self.registers.set_substraction_flag(true);
+        self.increment_cycles(1);
+    }
+
+    fn scf(&mut self) {
+        self.registers.set_carry_flag(true);
+        self.registers.set_half_carry_flag(false);
+        self.registers.set_substraction_flag(false);
+        self.increment_cycles(1);
+    }
+
+    fn ccf(&mut self) {
+        self.registers
+            .set_carry_flag(!self.registers.get_carry_flag());
+        self.registers.set_half_carry_flag(false);
+        self.registers.set_substraction_flag(false);
+        self.increment_cycles(1);
+    }
+
+    fn ret_conditional(&self, condition: u8) {
+        unimplemented!();
+    }
+
+    fn ret(&self) {
+        // basically pop pc
+        unimplemented!();
+    }
+
+    fn reti(&self) {
+        // equivalent to executing EI then RET
+        unimplemented!();
     }
 }
 
