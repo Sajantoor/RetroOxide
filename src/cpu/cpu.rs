@@ -269,7 +269,7 @@ impl CPU {
                         let nn = self.next_word();
                         self.jp(nn)
                     }
-                    // 1 => CB prefix
+                    1 => self.handle_cb_prefix(),
                     2..6 => self.nop(),
                     6 => self.di(),
                     7 => self.ei(),
@@ -310,7 +310,7 @@ impl CPU {
                     }
                 }
                 7 => {
-                    // self.rst(y * 8);
+                    self.rst(y as u16 * 8);
                 }
                 _ => {
                     panic!("Z has range 0 - 7, got {:?}", z);
@@ -483,6 +483,13 @@ impl CPU {
         // TODO: some wasted instructions
         // since push and jp set cycles, updating here
         self.cycles.set(cycles + 6);
+    }
+
+    fn rst(&mut self, vec: u16) {
+        // call address vec
+        let cycles = self.cycles.get();
+        self.call(vec);
+        self.cycles.set(cycles + 4);
     }
 
     fn call_conditional(&mut self, addr: u16, condition: u8) {
@@ -676,65 +683,88 @@ impl CPU {
     }
 
     // Rotation instructions
-    fn rlca(&mut self) {
-        let a = self.registers.a.get();
-        // Get the carry bit (bit 7)
-        let carry = (a & 0x80) >> 7;
+    fn rlc(&mut self, register: &mut u8) {
+        let value = *register;
+        let carry = (value & 0x80) >> 7;
         // Shift left by 1 and set bit 0 to carry
-        let result = (a << 1) | carry;
-        self.registers.a.set(result);
+        let result = (value << 1) | carry;
+        *register = result;
 
         self.registers.set_carry_flag(carry == 1);
         self.registers.set_zero_flag(false);
         self.registers.set_substraction_flag(false);
         self.registers.set_half_carry_flag(false);
+    }
+
+    fn rlca(&mut self) {
+        let mut a = self.registers.a.get();
+        self.rlc(&mut a);
+        self.registers.a.set(a);
         self.increment_cycles(1);
+    }
+
+    fn rrc(&mut self, register: &mut u8) {
+        let value = *register;
+        // Get the carry bit (bit 0)
+        let carry = value & 0x01;
+        // Shift right by 1 and set bit 7 to carry
+        let result: u8 = (value >> 1) | (carry << 7);
+        *register = result;
+
+        self.registers.set_carry_flag(carry == 1);
+        self.registers.set_zero_flag(false);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
     }
 
     fn rrca(&mut self) {
-        let a = self.registers.a.get();
-        // Get the carry bit (bit 0)
-        let carry = a & 0x01;
-        // Shift right by 1 and set bit 7 to carry
-        let result = (a >> 1) | (carry << 7);
-        self.registers.a.set(result);
+        let mut a = self.registers.a.get();
+        self.rrc(&mut a);
+        self.registers.a.set(a);
+        self.increment_cycles(1);
+    }
 
-        self.registers.set_carry_flag(carry == 1);
+    fn rl(&mut self, register: &mut u8) {
+        let value = *register;
+
+        let carry = self.registers.get_carry_flag() as u8;
+        let new_carry = (value & 0x80) >> 7;
+
+        let result = (value << 1) | carry;
+        *register = result;
+
+        self.registers.set_carry_flag(new_carry == 1);
         self.registers.set_zero_flag(false);
         self.registers.set_substraction_flag(false);
         self.registers.set_half_carry_flag(false);
-        self.increment_cycles(1);
     }
 
     fn rla(&mut self) {
-        let a = self.registers.a.get();
-
-        let carry = self.registers.get_carry_flag() as u8;
-        let new_carry = (a & 0x80) >> 7;
-
-        let result = (a << 1) | carry;
-        self.registers.a.set(result);
-
-        self.registers.set_carry_flag(new_carry == 1);
-        self.registers.set_zero_flag(false);
-        self.registers.set_substraction_flag(false);
-        self.registers.set_half_carry_flag(false);
+        let mut a = self.registers.a.get();
+        self.rl(&mut a);
+        self.registers.a.set(a);
         self.increment_cycles(1);
     }
 
-    fn rra(&mut self) {
-        let a = self.registers.a.get();
+    fn rr(&mut self, register: &mut u8) {
+        let value = *register;
 
         let carry = self.registers.get_carry_flag() as u8;
-        let new_carry = (a & 0x80) >> 7;
+        let new_carry = (value & 0x80) >> 7;
 
-        let result = (a >> 1) | (carry << 7);
-        self.registers.a.set(result);
+        let result = (value >> 1) | (carry << 7);
+        *register = result;
 
         self.registers.set_carry_flag(new_carry == 1);
         self.registers.set_zero_flag(false);
         self.registers.set_substraction_flag(false);
         self.registers.set_half_carry_flag(false);
+    }
+
+    fn rra(&mut self) {
+        let mut a = self.registers.a.get();
+        self.rr(&mut a);
+        self.registers.a.set(a);
         self.increment_cycles(1);
     }
 
@@ -818,6 +848,131 @@ impl CPU {
     fn ei(&mut self) {
         self.ime_flag = true;
         self.increment_cycles(1);
+    }
+
+    fn handle_cb_prefix(&mut self) {
+        let opcode = self.next_byte();
+        let x: u8 = opcode & 0xC0; // bits 7-6
+        let y = opcode & 0x38; // bits 5-3
+        let z = opcode & 0x07; // bits 2-0
+
+        let mut register = *self.get_register_from_table_r(z);
+
+        match x {
+            0 => {
+                match y {
+                    0 => {
+                        self.rlc(&mut register);
+                    }
+                    1 => {
+                        self.rrc(&mut register);
+                    }
+                    2 => {
+                        self.rl(&mut register);
+                    }
+                    3 => {
+                        self.rr(&mut register);
+                    }
+                    4 => {
+                        self.sla(&mut register);
+                    }
+                    5 => {
+                        self.sra(&mut register);
+                    }
+                    6 => {
+                        self.swap(&mut register);
+                    }
+                    7 => {
+                        self.srl(&mut register);
+                    }
+                    _ => panic!("Invalid CB prefix y value: {:?}", y),
+                };
+            }
+            1 => {
+                // BIT y, r[z]
+                // test bit y in r[z], 0 is the rightmost bit, 7 is the leftmost bit
+                let bit_mask = 1 << y;
+                let is_bit_set = (register & bit_mask) != 0;
+
+                self.registers.set_zero_flag(!is_bit_set);
+                self.registers.set_substraction_flag(false);
+                self.registers.set_half_carry_flag(true);
+                self.increment_cycles(2);
+                // register is unchanegd
+                return;
+            }
+            2 => {
+                // RES y, r[z]
+                // reset bit y in r[z] to 0, 0 is the rightmost bit, 7 is the leftmost bit
+                let bit_mask = !(1 << y);
+                register &= bit_mask;
+            }
+            3 => {
+                // SET y, r[z]
+                // set bit y in r[z] to 1, 0 is the rightmost bit, 7 is the leftmost bit
+                let bit_mask = 1 << y;
+                register |= bit_mask;
+            }
+            _ => panic!("Invalid CB prefix x value: {:?}", x),
+        }
+
+        // All the above instructions did not increment cycles intentionally
+        // will increment (HL) by 2 cycles intentionally, once above and once here
+        *self.get_register_from_table_r(z) = register;
+        self.increment_cycles(2);
+    }
+
+    fn sla(&mut self, register: &mut u8) {
+        let value = *register;
+        let new_carry = (value & 0x80) >> 7;
+
+        let result = value << 1;
+        *register = result;
+
+        self.registers.set_carry_flag(new_carry == 1);
+        self.registers.set_zero_flag(result == 0);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+    }
+
+    fn sra(&mut self, register: &mut u8) {
+        let value = *register;
+        let new_carry = value & 0x01;
+
+        let msb = value & 0x80; // preserve most significant bit
+        let result: u8 = (value >> 1) | msb;
+        *register = result;
+
+        self.registers.set_carry_flag(new_carry == 1);
+        self.registers.set_zero_flag(result == 0);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+    }
+
+    fn swap(&mut self, register: &mut u8) {
+        // swap the high and the low nibbles of the register
+        let value = *register;
+        let low = (value & 0xF0) >> 4; // take the high bits and shift them to low
+        let high = (value & 0x0F) << 4; // take the low bits and shift them to high
+        let result = low | high;
+
+        self.registers.set_carry_flag(false);
+        self.registers.set_zero_flag(result == 0);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
+    }
+
+    fn srl(&mut self, register: &mut u8) {
+        let value = *register;
+        let new_carry = value & 0x01;
+
+        let result: u8 = value >> 1;
+        *register = result;
+
+        self.registers.set_carry_flag(new_carry == 1);
+        self.registers.set_zero_flag(result == 0);
+        self.registers.set_substraction_flag(false);
+        self.registers.set_half_carry_flag(false);
     }
 }
 
