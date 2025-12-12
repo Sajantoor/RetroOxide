@@ -210,7 +210,7 @@ impl CPU {
                         self.registers
                             .set_carry_flag(((sp & 0xFF) + (n & 0xFF)) > 0xFF);
                         self.registers.set_zero_flag(false);
-                        self.registers.set_substraction_flag(false);
+                        self.registers.set_subtraction_flag(false);
                     }
                     _ => panic!("Y has range 0 - 7, got {:?}", y),
                 },
@@ -514,7 +514,7 @@ impl CPU {
 
         self.registers.set_carry_flag(result > 0xFF);
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         // Check if there is a carry from bit 3 to bit 4 by masking the lower nibble and summing them.
         self.registers.set_half_carry_flag(
             ((a_value & 0xF) + (value as u8 & 0xF) + (carry_value as u8)) > 0xF,
@@ -540,7 +540,7 @@ impl CPU {
         self.registers.set_carry_flag(result > 0xFFFF);
         self.registers
             .set_half_carry_flag(((value & 0x0FFF) + (i & 0x0FFF)) > 0x0FFF);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.increment_cycles(2);
 
         self.registers.set_hl(result as u16);
@@ -556,7 +556,7 @@ impl CPU {
         self.registers
             .set_carry_flag(((sp & 0xFF) + (d as u16 & 0xFF)) > 0xFF);
         self.registers.set_zero_flag(false);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.increment_cycles(4);
     }
 
@@ -573,7 +573,7 @@ impl CPU {
         let result: i16 = (a_value as i16) - (value as i16) - (carry_value as i16);
         self.registers.set_carry_flag(result < 0);
         self.registers.set_zero_flag((result & 0xFF) == 0);
-        self.registers.set_substraction_flag(true);
+        self.registers.set_subtraction_flag(true);
         // Check if there is a borrow from bit 4 to bit 3 by masking the
         self.registers.set_half_carry_flag(
             ((a_value & 0xF) as i8 - (value as i8 & 0xF) - (carry_value as i8)) < 0,
@@ -599,7 +599,7 @@ impl CPU {
         self.registers.a.set(result);
 
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(true);
         self.registers.set_carry_flag(false);
 
@@ -614,7 +614,7 @@ impl CPU {
         self.registers.a.set(result);
 
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
         self.registers.set_carry_flag(false);
 
@@ -630,7 +630,7 @@ impl CPU {
         self.registers.a.set(result);
 
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
         self.registers.set_carry_flag(false);
 
@@ -645,7 +645,7 @@ impl CPU {
         let result: i8 = (self.registers.a.get() as i8) - (value as i8);
 
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(true);
+        self.registers.set_subtraction_flag(true);
         self.registers.set_half_carry_flag(
             ((self.registers.a.get() & 0xF) as i8) - ((value & 0xF) as i8) < 0,
         );
@@ -692,7 +692,7 @@ impl CPU {
 
         self.registers.set_carry_flag(carry == 1);
         self.registers.set_zero_flag(false);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
 
@@ -713,7 +713,7 @@ impl CPU {
 
         self.registers.set_carry_flag(carry == 1);
         self.registers.set_zero_flag(false);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
 
@@ -735,7 +735,7 @@ impl CPU {
 
         self.registers.set_carry_flag(new_carry == 1);
         self.registers.set_zero_flag(false);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
 
@@ -757,7 +757,7 @@ impl CPU {
 
         self.registers.set_carry_flag(new_carry == 1);
         self.registers.set_zero_flag(false);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
 
@@ -776,14 +776,14 @@ impl CPU {
         let a = self.registers.a.get();
         self.registers.a.set(a.wrapping_neg());
         self.registers.set_half_carry_flag(true);
-        self.registers.set_substraction_flag(true);
+        self.registers.set_subtraction_flag(true);
         self.increment_cycles(1);
     }
 
     fn scf(&mut self) {
         self.registers.set_carry_flag(true);
         self.registers.set_half_carry_flag(false);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.increment_cycles(1);
     }
 
@@ -791,7 +791,7 @@ impl CPU {
         self.registers
             .set_carry_flag(!self.registers.get_carry_flag());
         self.registers.set_half_carry_flag(false);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.increment_cycles(1);
     }
 
@@ -895,7 +895,7 @@ impl CPU {
                 let is_bit_set = (register & bit_mask) != 0;
 
                 self.registers.set_zero_flag(!is_bit_set);
-                self.registers.set_substraction_flag(false);
+                self.registers.set_subtraction_flag(false);
                 self.registers.set_half_carry_flag(true);
                 self.increment_cycles(2);
                 // register is unchanegd
@@ -931,7 +931,7 @@ impl CPU {
 
         self.registers.set_carry_flag(new_carry == 1);
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
 
@@ -945,7 +945,7 @@ impl CPU {
 
         self.registers.set_carry_flag(new_carry == 1);
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
 
@@ -958,7 +958,7 @@ impl CPU {
 
         self.registers.set_carry_flag(false);
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
 
@@ -971,15 +971,11 @@ impl CPU {
 
         self.registers.set_carry_flag(new_carry == 1);
         self.registers.set_zero_flag(result == 0);
-        self.registers.set_substraction_flag(false);
+        self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
 }
 
 fn load(dest: &mut u8, source: u8) {
-    *dest = source;
-}
-
-fn load_16(dest: &mut u16, source: u16) {
     *dest = source;
 }

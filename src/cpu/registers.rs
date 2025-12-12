@@ -74,11 +74,11 @@ impl Registers {
     /**
      * N
      */
-    pub fn set_substraction_flag(&mut self, flag: bool) {
+    pub fn set_subtraction_flag(&mut self, flag: bool) {
         self.f.set((self.f.get() & 0xBF) | ((flag as u8) << 6));
     }
 
-    pub fn get_substraction_flag(&self) -> bool {
+    pub fn get_subtraction_flag(&self) -> bool {
         return (self.f.get() & 0x40) != 0;
     }
 
