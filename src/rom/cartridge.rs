@@ -13,7 +13,7 @@ pub struct Cartridge {
 }
 
 impl Cartridge {
-    pub fn from_file(path: &str) -> io::Result<Self> {
+    pub fn new(path: &str) -> io::Result<Self> {
         let rom_data = fs::read(path)?;
         let rom_size = rom_data.len() as u32;
 
@@ -25,10 +25,6 @@ impl Cartridge {
             rom_data,
             rom_header,
         })
-    }
-
-    pub fn read() {
-        panic!("Not implemented yet!");
     }
 
     pub fn validate_header_checksum(&self) -> bool {
@@ -43,5 +39,9 @@ impl Cartridge {
         }
 
         return true;
+    }
+
+    pub fn get_data(&self) -> &Vec<u8> {
+        return &self.rom_data;
     }
 }
