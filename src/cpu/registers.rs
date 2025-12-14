@@ -1,5 +1,6 @@
 use std::cell::Cell;
 
+#[derive(Debug)]
 pub struct Registers {
     pub a: Cell<u8>,
     pub b: Cell<u8>,
@@ -15,7 +16,20 @@ pub struct Registers {
 
 impl Registers {
     pub fn new() -> Self {
-        unimplemented!("Unimplemented new registers");
+        Registers {
+            // TODO: These values may not be correct depending on the game.
+            // https://gbdev.io/pandocs/Power_Up_Sequence.html#cpu-registers
+            a: Cell::new(0x11),
+            b: Cell::new(0x01),
+            c: Cell::new(0),
+            d: Cell::new(0),
+            e: Cell::new(0x08),
+            f: Cell::new(0),
+            h: Cell::new(0),
+            l: Cell::new(0x7C),
+            sp: Cell::new(0xFFFE),
+            pc: Cell::new(0x0100),
+        }
     }
 
     pub fn get_bc(&self) -> u16 {
