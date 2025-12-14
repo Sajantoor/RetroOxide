@@ -2,7 +2,9 @@ use std::cell::Cell;
 
 use crate::bus::Bus;
 use crate::cpu::registers::Registers;
+use crate::rom::cartridge::Cartridge;
 
+#[derive(Debug)]
 pub struct CPU {
     registers: Registers,
     // T-Edge
@@ -20,30 +22,41 @@ pub struct CPU {
  * For each instruction, we need to emulate the function + addressing mode + cycles
 */
 impl CPU {
-    pub fn new() -> Self {
+    pub fn new(cartridge: Cartridge) -> Self {
         CPU {
             registers: Registers::new(),
             cycles: Cell::new(0),
-            bus: Bus::new(),
+            bus: Bus::new(cartridge),
             ime_flag: false, // IME is unset (interrupts are disabled) when the game starts running.
         }
     }
 
-    fn next_byte(&mut self) -> u8 {
-        unimplemented!();
+    pub fn step(&mut self) {
+        let opcode = self.next_byte();
+        self.handle_instruction(opcode);
     }
 
-    fn next_word(&mut self) -> u16 {
-        unimplemented!();
+    fn next_byte(&self) -> u8 {
+        let pc = self.registers.pc.get();
+        let byte = self.bus.read_byte(pc);
+        self.registers.pc.set(pc + 1);
+        return byte;
+    }
+
+    fn next_word(&self) -> u16 {
+        let pc = self.registers.pc.get();
+        let word = self.bus.read_word(pc);
+        self.registers.pc.set(pc + 2);
+        return word;
     }
 
     // instructions are prefix byte, opcode (byte), displacement byte, intermediate data
     pub fn handle_instruction(&mut self, opcode: u8) {
         // Referenced: http://archive.gbdev.io/salvage/decoding_gbz80_opcodes/Decoding%20Gamboy%20Z80%20Opcodes.html
-        let x: u8 = opcode & 0xC0; // bits 7-6
-        let y = opcode & 0x38; // bits 5-3
+        let x = (opcode >> 6) & 0x03; // bits 7-6
+        let y = (opcode >> 3) & 0x07; // bits 5-3
         let z = opcode & 0x07; // bits 2-0
-        let p = opcode & 0x18; // bits 5-4
+        let p = y >> 1; // bits 5-4
         let q = y & 1 == 0; // y modulo 2
 
         // fallback to an "invalid" instruction is NOP
