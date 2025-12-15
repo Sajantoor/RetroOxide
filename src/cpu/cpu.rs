@@ -57,7 +57,7 @@ impl CPU {
         let y = (opcode >> 3) & 0x07; // bits 5-3
         let z = opcode & 0x07; // bits 2-0
         let p = y >> 1; // bits 5-4
-        let q = y & 1 == 0; // y modulo 2
+        let q = opcode >> 3 == 1; // bit 3
 
         // fallback to an "invalid" instruction is NOP
         match x {
