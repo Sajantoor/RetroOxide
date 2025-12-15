@@ -1,6 +1,7 @@
 mod bus;
 mod cpu;
 mod emu;
+mod mappers;
 mod rom;
 
 use crate::rom::cartridge::Cartridge;
@@ -15,9 +16,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_path = args.get(1).unwrap();
 
     let cartridge = Cartridge::new(&file_path)?;
-
-    println!("{:?}", cartridge.rom_header);
-    println!("{:?}", cartridge.validate_header_checksum());
 
     let mut context = emu::Context::new(cartridge);
     context.start();

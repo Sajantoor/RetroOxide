@@ -1,13 +1,12 @@
+use crate::mappers::mapper::Mapper;
+use crate::mappers::mbc1::Mbc1;
 use crate::rom::cartridge::Cartridge;
 
 #[derive(Debug)]
 pub struct Bus {
-    cartridge: Cartridge,
-
     // 16KiB ROM bank 00
-    rom_bank_oo: [u8; 0x4000],
     // 16 KiB from cartridge, switchable banks
-    rom_banks: [u8; 0x4000],
+    mapper: Mbc1,
     // 8KiB Video RAM
     vram: [u8; 0x2000],
     // 8KiB External RAM
@@ -30,10 +29,8 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(cartridge: Cartridge) -> Self {
-        let mut bus = Bus {
-            cartridge,
-            rom_bank_oo: [0; 0x4000],
-            rom_banks: [0; 0x4000],
+        Bus {
+            mapper: Mbc1::new(cartridge),
             vram: [0; 0x2000],
             ram: [0; 0x2000],
             wram: [0; 0x2000],
@@ -41,22 +38,13 @@ impl Bus {
             io_regs: [0; 0x80],
             hram: [0; 0x7F],
             ie_reg: 0,
-        };
-
-        bus.load_cartridge();
-        return bus;
-    }
-
-    fn load_cartridge(&mut self) {
-        let data = self.cartridge.get_data();
-        self.rom_bank_oo.copy_from_slice(&data[..0x4000]);
+        }
     }
 
     pub fn read_byte(&self, addr: u16) -> u8 {
         let index = addr as usize;
         match index {
-            0x0000..=0x3FFF => self.rom_bank_oo[index],
-            0x4000..=0x7FFF => self.rom_banks[index - 0x4000],
+            0x0000..0x8000 => self.mapper.read(addr),
             0x8000..=0x9FFF => self.vram[index - 0x8000],
             0xA000..=0xBFFF => self.ram[index - 0xA000],
             0xC000..=0xDFFF => self.wram[index - 0xC000],
@@ -81,10 +69,7 @@ impl Bus {
         let index = addr as usize;
 
         match index {
-            0x0000..=0x7FFF => {
-                // Typically ROM area, writing may involve bank switching
-                unimplemented!("Writing to ROM area is not implemented");
-            }
+            0x0000..=0x7FFF => self.mapper.write(addr, value),
             0x8000..=0x9FFF => self.vram[index - 0x8000] = value,
             0xA000..=0xBFFF => self.ram[index - 0xA000] = value,
             0xC000..=0xDFFF => self.wram[index - 0xC000] = value,
