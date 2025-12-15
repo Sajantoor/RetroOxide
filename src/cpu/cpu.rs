@@ -172,20 +172,23 @@ impl CPU {
             }
 
             // Operate on accumulator and register/memory location
-            2 => match y {
-                0 => self.add(z),
-                1 => self.adc(z),
-                2 => self.sub(z),
-                3 => self.sbc(z),
-                4 => self.and(z),
-                5 => self.xor(z),
-                6 => self.or(z),
-                7 => self.cp(z),
-                _ => panic!(
-                    "Should not be able to reach this value, y only has a range of 0-7, got {:?}",
-                    y
-                ),
-            },
+            2 => {
+                let value = *self.get_register_from_table_r(z);
+                match y {
+                    0 => self.add(value),
+                    1 => self.adc(value),
+                    2 => self.sub(value),
+                    3 => self.sbc(value),
+                    4 => self.and(value),
+                    5 => self.xor(value),
+                    6 => self.or(value),
+                    7 => self.cp(value),
+                    _ => panic!(
+                        "Should not be able to reach this value, y only has a range of 0-7, got {:?}",
+                        y
+                    ),
+                }
+            }
 
             3 => match z {
                 0 => match y {
@@ -513,9 +516,8 @@ impl CPU {
         }
     }
 
-    fn add_helper(&mut self, i: u8, should_carry: bool) {
-        // Add the value in r8
-        let value: u16 = (*self.get_register_from_table_r(i)).into();
+    fn add_helper(&mut self, value: u8, should_carry: bool) {
+        let value: u16 = value.into();
         let a_value = self.registers.a.get();
         let carry_value: u16 = if should_carry {
             self.registers.get_carry_flag() as u16
@@ -538,12 +540,12 @@ impl CPU {
         self.increment_cycles(1);
     }
 
-    fn add(&mut self, i: u8) {
-        self.add_helper(i, false);
+    fn add(&mut self, value: u8) {
+        self.add_helper(value, false);
     }
 
-    fn adc(&mut self, i: u8) {
-        self.add_helper(i, true);
+    fn adc(&mut self, value: u8) {
+        self.add_helper(value, true);
     }
 
     fn add_hl(&mut self, i: u16) {
@@ -573,8 +575,8 @@ impl CPU {
         self.increment_cycles(4);
     }
 
-    fn subtract_helper(&mut self, i: u8, should_carry: bool) {
-        let value: u16 = (*self.get_register_from_table_r(i)).into();
+    fn subtract_helper(&mut self, value: u8, should_carry: bool) {
+        let value: u16 = value.into();
         let a_value = self.registers.a.get();
         let carry_value: u16 = if should_carry {
             self.registers.get_carry_flag() as u16
@@ -596,18 +598,17 @@ impl CPU {
         self.increment_cycles(1);
     }
 
-    fn sub(&mut self, i: u8) {
-        self.subtract_helper(i, false);
+    fn sub(&mut self, value: u8) {
+        self.subtract_helper(value, false);
     }
 
-    fn sbc(&mut self, i: u8) {
-        self.subtract_helper(i, true);
+    fn sbc(&mut self, value: u8) {
+        self.subtract_helper(value, true);
     }
 
-    fn and(&mut self, i: u8) {
+    fn and(&mut self, value: u8) {
         // AND A,r8
         // Set A to the bitwise AND between the value in r8 and A.
-        let value = *self.get_register_from_table_r(i);
         let result = self.registers.a.get() & value;
         self.registers.a.set(result);
 
@@ -619,10 +620,9 @@ impl CPU {
         self.increment_cycles(1);
     }
 
-    fn xor(&mut self, i: u8) {
+    fn xor(&mut self, value: u8) {
         // XOR A,r8
         // Set A to the bitwise XOR between the value in r8 and A.
-        let value = *self.get_register_from_table_r(i);
         let result = self.registers.a.get() ^ value;
         self.registers.a.set(result);
 
@@ -634,10 +634,9 @@ impl CPU {
         self.increment_cycles(1);
     }
 
-    fn or(&mut self, i: u8) {
+    fn or(&mut self, value: u8) {
         // OR A,r8
         // Set A to the bitwise OR between the value in r8 and A.
-        let value = *self.get_register_from_table_r(i);
         let result = self.registers.a.get() | value;
 
         self.registers.a.set(result);
@@ -650,11 +649,9 @@ impl CPU {
         self.increment_cycles(1);
     }
 
-    fn cp(&mut self, i: u8) {
+    fn cp(&mut self, value: u8) {
         // compare the value in A with the value in r8.
         // This subtracts the value in r8 from A and sets flags accordingly, but discards the result.
-        let value = *self.get_register_from_table_r(i);
-
         let result: i8 = (self.registers.a.get() as i8) - (value as i8);
 
         self.registers.set_zero_flag(result == 0);
