@@ -32,6 +32,23 @@ impl CPU {
     }
 
     pub fn step(&mut self) {
+        println!(
+            "A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}",
+            self.registers.a.get(),
+            self.registers.f.get(),
+            self.registers.b.get(),
+            self.registers.c.get(),
+            self.registers.d.get(),
+            self.registers.e.get(),
+            self.registers.h.get(),
+            self.registers.l.get(),
+            self.registers.sp.get(),
+            self.registers.pc.get(),
+            self.bus.read_byte(self.registers.pc.get()),
+            self.bus.read_byte(self.registers.pc.get() + 1),
+            self.bus.read_byte(self.registers.pc.get() + 2),
+            self.bus.read_byte(self.registers.pc.get() + 3)
+        );
         let opcode = self.next_byte();
         self.handle_instruction(opcode);
     }
@@ -56,8 +73,8 @@ impl CPU {
         let x = (opcode >> 6) & 0x03; // bits 7-6
         let y = (opcode >> 3) & 0x07; // bits 5-3
         let z = opcode & 0x07; // bits 2-0
-        let p = y >> 1; // bits 5-4
-        let q = opcode >> 3 == 1; // bit 3
+        let p = y >> 1 & 0x03; // bits 5-4
+        let q = (opcode >> 3 & 0x01) == 1; // bit 3
 
         // fallback to an "invalid" instruction is NOP
         match x {
@@ -142,7 +159,8 @@ impl CPU {
                 5 => self.dec(y),
                 6 => {
                     let n = self.next_byte();
-                    load(self.get_register_from_table_r(y), n)
+                    load(self.get_register_from_table_r(y), n);
+                    self.increment_cycles(2);
                 }
                 7 => match y {
                     0 => self.rlca(),
@@ -441,8 +459,7 @@ impl CPU {
     }
 
     fn jr(&self, n: i8) {
-        // Although relative jump instructions are traditionally shown with a 16-bit address for an operand, here they will take the form JR/DJNZ d, where d is the signed 8-bit displacement that follows (as this is how they are actually stored). The jump's final address is obtained by adding the displacement to the instruction's address plus 2.
-        let displacement: i16 = n as i16 + 2;
+        let displacement: i16 = n as i16;
         // get current pc count and add n
         let updated_pc = (self.registers.pc.get() as i16) + displacement;
         self.registers.pc.set(updated_pc as u16);
@@ -666,26 +683,52 @@ impl CPU {
 
     fn dec(&mut self, i: u8) {
         let pointer = self.get_register_from_table_r(i);
-        *pointer = pointer.wrapping_add(1);
+        let value = pointer.wrapping_sub(1);
+        *pointer = value;
         self.increment_cycles(1);
+
+        // set flags
+        self.registers.set_zero_flag(value == 0);
+        self.registers.set_subtraction_flag(true);
+        self.registers.set_half_carry_flag((value & 0x0F) == 0x0F);
     }
 
     fn inc(&mut self, i: u8) {
         let pointer = self.get_register_from_table_r(i);
-        *pointer = pointer.wrapping_add(1);
+        let value = pointer.wrapping_add(1);
+        *pointer = value;
         self.increment_cycles(1);
+
+        // set flags
+        self.registers.set_zero_flag(value == 0);
+        self.registers.set_subtraction_flag(false);
+        self.registers.set_half_carry_flag((value & 0x0F) == 0x00);
     }
 
-    fn dec_16(&self, i: u8) {
+    fn dec_16(&mut self, i: u8) {
         let value = self.get_register_from_table_rp(i);
         self.set_register_from_table_rp(i, value.wrapping_sub(1));
         self.increment_cycles(2);
+
+        // don't update flags for SP
+        if i != 3 {
+            self.registers.set_zero_flag(value == 0);
+            self.registers.set_subtraction_flag(true);
+            self.registers.set_half_carry_flag((value & 0x0F) == 0x0F);
+        }
     }
 
-    fn inc_16(&self, i: u8) {
+    fn inc_16(&mut self, i: u8) {
         let value = self.get_register_from_table_rp(i);
         self.set_register_from_table_rp(i, value.wrapping_add(1));
         self.increment_cycles(2);
+
+        // don't update flags for SP
+        if i != 3 {
+            self.registers.set_zero_flag(value == 0);
+            self.registers.set_subtraction_flag(false);
+            self.registers.set_half_carry_flag((value & 0x0F) == 0x00);
+        }
     }
 
     fn increment_cycles(&self, i: usize) {
@@ -908,7 +951,7 @@ impl CPU {
                 self.registers.set_subtraction_flag(false);
                 self.registers.set_half_carry_flag(true);
                 self.increment_cycles(2);
-                // register is unchanegd
+                // register is unchanged
                 return;
             }
             2 => {
