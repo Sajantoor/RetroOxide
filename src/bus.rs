@@ -100,6 +100,19 @@ impl Bus {
     }
 
     pub fn get_pointer(&mut self, addr: u16) -> &mut u8 {
-        &mut self.ram[addr as usize]
+        let index = addr as usize;
+        match index {
+            0x0000..=0x7FFF => panic!("Cannot get mutable pointer to ROM area"),
+            0x8000..=0x9FFF => &mut self.vram[index - 0x8000],
+            0xA000..=0xBFFF => &mut self.ram[index - 0xA000],
+            0xC000..=0xDFFF => &mut self.wram[index - 0xC000],
+            0xE000..=0xFDFF => panic!("Cannot get mutable pointer to Echo RAM"),
+            0xFE00..=0xFE9F => &mut self.oam[index - 0xFE00],
+            0xFEA0..=0xFEFF => panic!("Cannot get mutable pointer to Not usable memory area"),
+            0xFF00..=0xFF7F => &mut self.io_regs[index - 0xFF00],
+            0xFF80..=0xFFFE => &mut self.hram[index - 0xFF80],
+            0xFFFF => &mut self.ie_reg,
+            _ => panic!("Cannot get mutable pointer to unmapped memory area"),
+        }
     }
 }

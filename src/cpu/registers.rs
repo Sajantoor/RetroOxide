@@ -19,14 +19,14 @@ impl Registers {
         Registers {
             // TODO: These values may not be correct depending on the game.
             // https://gbdev.io/pandocs/Power_Up_Sequence.html#cpu-registers
-            a: Cell::new(0x11),
-            b: Cell::new(0x01),
-            c: Cell::new(0),
-            d: Cell::new(0),
-            e: Cell::new(0x08),
-            f: Cell::new(0),
-            h: Cell::new(0),
-            l: Cell::new(0x7C),
+            a: Cell::new(0x01),
+            b: Cell::new(0x00),
+            c: Cell::new(0x13),
+            d: Cell::new(0x00),
+            e: Cell::new(0xD8),
+            f: Cell::new(0xB0),
+            h: Cell::new(0x01),
+            l: Cell::new(0x4D),
             sp: Cell::new(0xFFFE),
             pc: Cell::new(0x0100),
         }
@@ -115,6 +115,6 @@ impl Registers {
     }
 
     pub fn get_carry_flag(&self) -> bool {
-        return (self.f.get() & 0x1) != 0;
+        return (self.f.get() & 0x10) != 0;
     }
 }

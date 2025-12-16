@@ -750,13 +750,13 @@ impl CPU {
     fn rrc(&mut self, register: &mut u8) {
         let value = *register;
         // Get the carry bit (bit 0)
-        let carry = value & 0x01;
+        let new_carry = value & 0x01;
         // Shift right by 1 and set bit 7 to carry
-        let result: u8 = (value >> 1) | (carry << 7);
+        let result: u8 = (value >> 1) | (new_carry << 7);
         *register = result;
 
-        self.registers.set_carry_flag(carry == 1);
-        self.registers.set_zero_flag(false);
+        self.registers.set_carry_flag(new_carry == 1);
+        self.registers.set_zero_flag(result == 0);
         self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
@@ -794,13 +794,13 @@ impl CPU {
         let value = *register;
 
         let carry = self.registers.get_carry_flag() as u8;
-        let new_carry = (value & 0x80) >> 7;
+        let new_carry = value & 0x01;
 
         let result = (value >> 1) | (carry << 7);
         *register = result;
 
         self.registers.set_carry_flag(new_carry == 1);
-        self.registers.set_zero_flag(false);
+        self.registers.set_zero_flag(result == 0);
         self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
@@ -867,7 +867,13 @@ impl CPU {
         let sp = self.registers.sp.get();
         let value = self.bus.read_word(sp);
         self.registers.sp.set(sp + 2);
-        self.set_register_from_table_rp2(i, value);
+        if i == 3 {
+            // AF register, lower nibble of F is always 0
+            self.set_register_from_table_rp2(i, value & 0xFFF0);
+        } else {
+            self.set_register_from_table_rp2(i, value);
+        }
+
         self.increment_cycles(3);
     }
 
