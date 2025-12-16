@@ -31,7 +31,7 @@ impl CPU {
         }
     }
 
-    pub fn step(&mut self) {
+    fn print_state(&self) {
         println!(
             "A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}",
             self.registers.a.get(),
@@ -49,6 +49,10 @@ impl CPU {
             self.bus.read_byte(self.registers.pc.get() + 2),
             self.bus.read_byte(self.registers.pc.get() + 3)
         );
+    }
+
+    pub fn step(&mut self) {
+        self.print_state();
         let opcode = self.next_byte();
         self.handle_instruction(opcode);
     }
@@ -148,7 +152,7 @@ impl CPU {
                 }
 
                 3 => {
-                    if q == true {
+                    if q == false {
                         self.inc_16(p);
                     } else {
                         self.dec_16(p);
@@ -511,7 +515,8 @@ impl CPU {
 
     fn call(&mut self, addr: u16) {
         let cycles = self.cycles.get();
-        self.push(addr);
+        // pushes the next pc onto the stack, then jumps to the addr
+        self.push(self.registers.pc.get());
         self.jp(addr);
         // TODO: some wasted instructions
         // since push and jp set cycles, updating here
@@ -545,12 +550,12 @@ impl CPU {
         let result: u16 = value + (a_value as u16) + carry_value;
 
         self.registers.set_carry_flag(result > 0xFF);
-        self.registers.set_zero_flag(result == 0);
-        self.registers.set_subtraction_flag(false);
         // Check if there is a carry from bit 3 to bit 4 by masking the lower nibble and summing them.
         self.registers.set_half_carry_flag(
             ((a_value & 0xF) + (value as u8 & 0xF) + (carry_value as u8)) > 0xF,
         );
+        self.registers.set_subtraction_flag(false);
+        self.registers.set_zero_flag(result & 0xFF == 0);
 
         // Set value in A register by truncating the value, as does the truncation
         self.registers.a.set(result as u8);
@@ -706,29 +711,15 @@ impl CPU {
     }
 
     fn dec_16(&mut self, i: u8) {
-        let value = self.get_register_from_table_rp(i);
-        self.set_register_from_table_rp(i, value.wrapping_sub(1));
+        let value = self.get_register_from_table_rp(i).wrapping_sub(1);
+        self.set_register_from_table_rp(i, value);
         self.increment_cycles(2);
-
-        // don't update flags for SP
-        if i != 3 {
-            self.registers.set_zero_flag(value == 0);
-            self.registers.set_subtraction_flag(true);
-            self.registers.set_half_carry_flag((value & 0x0F) == 0x0F);
-        }
     }
 
     fn inc_16(&mut self, i: u8) {
-        let value = self.get_register_from_table_rp(i);
-        self.set_register_from_table_rp(i, value.wrapping_add(1));
+        let value = self.get_register_from_table_rp(i).wrapping_add(1);
+        self.set_register_from_table_rp(i, value);
         self.increment_cycles(2);
-
-        // don't update flags for SP
-        if i != 3 {
-            self.registers.set_zero_flag(value == 0);
-            self.registers.set_subtraction_flag(false);
-            self.registers.set_half_carry_flag((value & 0x0F) == 0x00);
-        }
     }
 
     fn increment_cycles(&self, i: usize) {
@@ -905,8 +896,8 @@ impl CPU {
 
     fn handle_cb_prefix(&mut self) {
         let opcode = self.next_byte();
-        let x: u8 = opcode & 0xC0; // bits 7-6
-        let y = opcode & 0x38; // bits 5-3
+        let x = (opcode >> 6) & 0x03; // bits 7-6
+        let y = (opcode >> 3) & 0x07; // bits 5-3
         let z = opcode & 0x07; // bits 2-0
 
         let mut register = *self.get_register_from_table_r(z);
