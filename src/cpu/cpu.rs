@@ -98,7 +98,7 @@ impl CPU {
                         let d: i8 = self.next_byte() as i8;
                         self.jr(d);
                     }
-                    4..7 => {
+                    4..=7 => {
                         let d: i8 = self.next_byte() as i8;
                         self.jr_conditional(d, y - 4);
                     }
@@ -153,9 +153,9 @@ impl CPU {
 
                 3 => {
                     if q == false {
-                        self.inc_16(p);
+                        self.inc_16(p)
                     } else {
-                        self.dec_16(p);
+                        self.dec_16(p)
                     }
                 }
 
@@ -235,9 +235,9 @@ impl CPU {
                     }
                     7 => {
                         // LD HL, SP + d
-                        let n = self.next_byte() as i16;
+                        let n = self.next_byte() as i8 as i16;
                         let sp = self.registers.sp.get() as i16;
-                        let value = sp + n;
+                        let value = sp.wrapping_add(n);
 
                         self.registers.set_hl(value as u16);
                         self.increment_cycles(3);
@@ -674,14 +674,15 @@ impl CPU {
     fn cp(&mut self, value: u8) {
         // compare the value in A with the value in r8.
         // This subtracts the value in r8 from A and sets flags accordingly, but discards the result.
-        let result: i8 = (self.registers.a.get() as i8) - (value as i8);
+        let result = self.registers.a.get().wrapping_sub(value) as i8;
 
         self.registers.set_zero_flag(result == 0);
         self.registers.set_subtraction_flag(true);
         self.registers.set_half_carry_flag(
             ((self.registers.a.get() & 0xF) as i8) - ((value & 0xF) as i8) < 0,
         );
-        self.registers.set_carry_flag(result < 0);
+        self.registers
+            .set_carry_flag(self.registers.a.get() < value);
 
         self.increment_cycles(1);
     }
@@ -735,7 +736,7 @@ impl CPU {
         *register = result;
 
         self.registers.set_carry_flag(carry == 1);
-        self.registers.set_zero_flag(false);
+        self.registers.set_zero_flag(result == 0);
         self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
@@ -744,6 +745,7 @@ impl CPU {
         let mut a = self.registers.a.get();
         self.rlc(&mut a);
         self.registers.a.set(a);
+        self.registers.set_zero_flag(false);
         self.increment_cycles(1);
     }
 
@@ -765,6 +767,7 @@ impl CPU {
         let mut a = self.registers.a.get();
         self.rrc(&mut a);
         self.registers.a.set(a);
+        self.registers.set_zero_flag(false);
         self.increment_cycles(1);
     }
 
@@ -778,7 +781,7 @@ impl CPU {
         *register = result;
 
         self.registers.set_carry_flag(new_carry == 1);
-        self.registers.set_zero_flag(false);
+        self.registers.set_zero_flag(result == 0);
         self.registers.set_subtraction_flag(false);
         self.registers.set_half_carry_flag(false);
     }
@@ -787,6 +790,7 @@ impl CPU {
         let mut a = self.registers.a.get();
         self.rl(&mut a);
         self.registers.a.set(a);
+        self.registers.set_zero_flag(false);
         self.increment_cycles(1);
     }
 
@@ -809,6 +813,7 @@ impl CPU {
         let mut a = self.registers.a.get();
         self.rr(&mut a);
         self.registers.a.set(a);
+        self.registers.set_zero_flag(false);
         self.increment_cycles(1);
     }
 
@@ -818,7 +823,7 @@ impl CPU {
 
     fn cpl(&mut self) {
         let a = self.registers.a.get();
-        self.registers.a.set(a.wrapping_neg());
+        self.registers.a.set(!a);
         self.registers.set_half_carry_flag(true);
         self.registers.set_subtraction_flag(true);
         self.increment_cycles(1);
@@ -1004,7 +1009,8 @@ impl CPU {
         let value = *register;
         let low = (value & 0xF0) >> 4; // take the high bits and shift them to low
         let high = (value & 0x0F) << 4; // take the low bits and shift them to high
-        let result = low | high;
+        let result = high | low;
+        *register = result;
 
         self.registers.set_carry_flag(false);
         self.registers.set_zero_flag(result == 0);
