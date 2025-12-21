@@ -817,8 +817,36 @@ impl CPU {
         self.increment_cycles(1);
     }
 
-    fn daa(&self) {
-        unimplemented!("DAA is unimplemented");
+    fn daa(&mut self) {
+        let a = self.registers.a.get();
+        let subtract_flag = self.registers.get_subtraction_flag();
+        let half_carry_flag = self.registers.get_half_carry_flag();
+        let carry_flag = self.registers.get_carry_flag();
+        let mut adjustment: u8 = 0;
+        let result: u8;
+        let mut new_carry_flag = false;
+
+        if half_carry_flag || (!subtract_flag && (a & 0xF) > 0x9) {
+            adjustment += 0x6;
+        }
+
+        if carry_flag || (!subtract_flag && a > 0x99) {
+            adjustment += 0x60;
+            new_carry_flag = true;
+        }
+
+        if subtract_flag {
+            result = a.wrapping_sub(adjustment);
+        } else {
+            result = a.wrapping_add(adjustment);
+        }
+
+        self.registers.set_zero_flag(result == 0);
+        self.registers.set_half_carry_flag(false);
+        self.registers.set_carry_flag(new_carry_flag);
+        self.increment_cycles(1);
+
+        self.registers.a.set(result);
     }
 
     fn cpl(&mut self) {
