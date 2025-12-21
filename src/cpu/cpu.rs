@@ -1,6 +1,10 @@
 use std::cell::Cell;
 
-use crate::bus::Bus;
+use crate::bus::bus::Bus;
+use crate::bus::interrupt_flags::{
+    INTERRUPT_ENABLE_ADDR, INTERRUPT_FLAG_ADDR, acknowledge_interrupt, get_interrupt_address,
+    get_requested_interrupt,
+};
 use crate::cpu::registers::Registers;
 use crate::rom::cartridge::Cartridge;
 
@@ -53,8 +57,16 @@ impl CPU {
 
     pub fn step(&mut self) {
         self.print_state();
+        let ime_flag_before = self.ime_flag;
+
         let opcode = self.next_byte();
         self.handle_instruction(opcode);
+
+        // The effect of ei is delayed by one instruction
+        if ime_flag_before && self.ime_flag {
+            self.handle_interrupts();
+        }
+
     }
 
     fn next_byte(&self) -> u8 {
@@ -363,6 +375,38 @@ impl CPU {
         self.nop();
     }
 
+    fn handle_interrupts(&mut self) {
+        // Handle multiple or nested interrupts by priority
+        while self.ime_flag {
+            let interrupt_flags = self.bus.read_byte(INTERRUPT_FLAG_ADDR);
+            let interrupt_enable = self.bus.read_byte(INTERRUPT_ENABLE_ADDR);
+
+            // Any set bits in the IF register are only requesting an interrupt, the actual
+            // execution of the interrupt handler only happens if both IME and IE
+            // allow it to be serviced
+            let triggered_interrupts = interrupt_flags & interrupt_enable;
+            if triggered_interrupts == 0 {
+                return;
+            }
+
+            self.ime_flag = false;
+            if let Some(interrupt) = get_requested_interrupt(triggered_interrupts) {
+                acknowledge_interrupt(&mut self.bus, interrupt_flags, interrupt);
+                // TODO: This is a hack since we're calling call and call increment 7 cycles
+                let cycles = self.cycles.get();
+
+                // Call the interrupt handler
+                let addr = get_interrupt_address(interrupt) as u16;
+                self.call(addr);
+
+                // Increment cycles for handling the interrupt
+                self.cycles.set(cycles + 5);
+                // update pc
+                self.registers.pc.set(self.registers.pc.get() + 1);
+            }
+        }
+    }
+
     /**
          *
         Table "r"
@@ -370,7 +414,7 @@ impl CPU {
         Index	0	1	2	3	4	5	6	    7
         Value	B	C	D	E	H	L	(HL)	A
     */
-    pub fn get_register_from_table_r(&mut self, i: u8) -> &mut u8 {
+    fn get_register_from_table_r(&mut self, i: u8) -> &mut u8 {
         match i {
             0 => self.registers.b.get_mut(),
             1 => self.registers.c.get_mut(),
@@ -399,7 +443,7 @@ impl CPU {
         Index	0	1	2	3
         Value	BC	DE	HL	SP
     */
-    pub fn get_register_from_table_rp(&self, i: u8) -> u16 {
+    fn get_register_from_table_rp(&self, i: u8) -> u16 {
         match i {
             0 => self.registers.get_bc(),
             1 => self.registers.get_de(),
@@ -412,7 +456,7 @@ impl CPU {
         }
     }
 
-    pub fn set_register_from_table_rp(&self, i: u8, value: u16) {
+    fn set_register_from_table_rp(&self, i: u8, value: u16) {
         match i {
             0 => self.registers.set_bc(value),
             1 => self.registers.set_de(value),
@@ -425,7 +469,7 @@ impl CPU {
         }
     }
 
-    pub fn get_register_from_table_rp2(&self, i: u8) -> u16 {
+    fn get_register_from_table_rp2(&self, i: u8) -> u16 {
         match i {
             0..3 => self.get_register_from_table_rp(i),
             3 => self.registers.get_af(),
@@ -436,7 +480,7 @@ impl CPU {
         }
     }
 
-    pub fn set_register_from_table_rp2(&self, i: u8, value: u16) {
+    fn set_register_from_table_rp2(&self, i: u8, value: u16) {
         match i {
             0 => self.registers.set_bc(value),
             1 => self.registers.set_de(value),
