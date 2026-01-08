@@ -3,6 +3,7 @@ mod cpu;
 mod emu;
 mod mappers;
 mod rom;
+mod utils;
 
 use crate::rom::cartridge::Cartridge;
 

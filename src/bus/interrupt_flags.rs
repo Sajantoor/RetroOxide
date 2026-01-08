@@ -39,6 +39,12 @@ pub fn get_requested_interrupt(interrupt_flags: u8) -> Option<InterruptType> {
     return None;
 }
 
+pub fn request_interrupt(bus: &mut Bus, interrupt: InterruptType) {
+    let current_interrupt_flags = bus.read_byte(INTERRUPT_ENABLE_ADDR);
+    let updated_interrupt_flags = current_interrupt_flags | (1 << (interrupt as u8));
+    bus.write_byte(INTERRUPT_FLAG_ADDR, updated_interrupt_flags);
+}
+
 pub fn acknowledge_interrupt(bus: &mut Bus, mut interrupt_flags: u8, interrupt: InterruptType) {
     // set the bit to zero
     interrupt_flags &= !(1 << (interrupt as u8));
