@@ -66,7 +66,6 @@ impl CPU {
         if ime_flag_before && self.ime_flag {
             self.handle_interrupts();
         }
-
     }
 
     fn next_byte(&self) -> u8 {
@@ -104,15 +103,16 @@ impl CPU {
                         let value = self.registers.sp.get();
                         self.bus.write_word(nn, value);
                         self.increment_cycles(5);
+                        return;
                     }
                     2 => self.stop(),
                     3 => {
                         let d: i8 = self.next_byte() as i8;
-                        self.jr(d);
+                        self.jr(d)
                     }
                     4..=7 => {
                         let d: i8 = self.next_byte() as i8;
-                        self.jr_conditional(d, y - 4);
+                        self.jr_conditional(d, y - 4)
                     }
                     _ => panic!("Y has range 4 - 7, got {:?}", y),
                 },
@@ -122,12 +122,12 @@ impl CPU {
                         false => {
                             // Load instruction:
                             let nn = self.next_word();
-                            self.set_register_from_table_rp(p, nn);
+                            self.set_register_from_table_rp(p, nn)
                         }
                         true => {
                             // Add instruction
                             let value = self.get_register_from_table_rp(p);
-                            self.add_hl(value);
+                            self.add_hl(value)
                         }
                     }
                 }
@@ -140,11 +140,11 @@ impl CPU {
                         1 => pointer = self.registers.get_de(),
                         2 => {
                             pointer = self.registers.get_hl();
-                            self.registers.set_hl(pointer.wrapping_add(1));
+                            self.registers.set_hl(pointer.wrapping_add(1))
                         }
                         3 => {
                             pointer = self.registers.get_hl();
-                            self.registers.set_hl(pointer.wrapping_sub(1));
+                            self.registers.set_hl(pointer.wrapping_sub(1))
                         }
                         _ => panic!("P has range 0 - 3, got {:?}", p),
                     }
@@ -153,12 +153,12 @@ impl CPU {
                         false => {
                             let source = self.registers.a.get();
                             self.bus.write_byte(pointer, source);
-                            self.increment_cycles(2);
+                            self.increment_cycles(2)
                         }
                         true => {
                             let value = self.bus.read_byte(pointer);
                             self.registers.a.set(value);
-                            self.increment_cycles(2);
+                            self.increment_cycles(2)
                         }
                     }
                 }
@@ -176,7 +176,7 @@ impl CPU {
                 6 => {
                     let n = self.next_byte();
                     load(self.get_register_from_table_r(y), n);
-                    self.increment_cycles(2);
+                    self.increment_cycles(2)
                 }
                 7 => match y {
                     0 => self.rlca(),
@@ -201,7 +201,7 @@ impl CPU {
                     let z = *(self.get_register_from_table_r(z));
                     let y = self.get_register_from_table_r(y);
                     load(y, z);
-                    self.increment_cycles(1);
+                    return self.increment_cycles(1);
                 }
             }
 
@@ -232,10 +232,11 @@ impl CPU {
                         let n = self.next_byte();
                         let addr = 0xFF00 + (n as u16);
                         self.load_to_memory(addr, self.registers.a.get());
+                        return;
                     }
                     5 => {
                         let d = self.next_byte() as i8;
-                        self.add_sp(d);
+                        self.add_sp(d)
                     }
                     6 => {
                         // LD A, (0xFF00 + n)
@@ -244,6 +245,7 @@ impl CPU {
                         let value = self.bus.read_byte(addr);
                         self.registers.a.set(value);
                         self.increment_cycles(2);
+                        return;
                     }
                     7 => {
                         // LD HL, SP + d
@@ -261,12 +263,13 @@ impl CPU {
                             .set_carry_flag(((sp & 0xFF) + (n & 0xFF)) > 0xFF);
                         self.registers.set_zero_flag(false);
                         self.registers.set_subtraction_flag(false);
+                        return;
                     }
                     _ => panic!("Y has range 0 - 7, got {:?}", y),
                 },
                 1 => {
                     if !q {
-                        self.pop(p);
+                        self.pop(p)
                     } else {
                         match p {
                             0 => self.ret(),
@@ -277,6 +280,7 @@ impl CPU {
                                 let hl = self.registers.get_hl();
                                 self.registers.sp.set(hl);
                                 self.increment_cycles(2);
+                                return;
                             }
                             _ => panic!("P has range 0 - 4 got {:?}", p),
                         }
@@ -286,17 +290,17 @@ impl CPU {
                 2 => match y {
                     0..4 => {
                         let nn = self.next_word();
-                        self.jp_cc(nn, y);
+                        self.jp_cc(nn, y)
                     }
                     4 => {
                         // LD (oxFF00 + C), A
                         let addr = (self.registers.c.get() as u16) + 0xFF00;
-                        self.load_to_memory(addr, self.registers.a.get());
+                        self.load_to_memory(addr, self.registers.a.get())
                     }
                     5 => {
                         // LD (nn), A
                         let nn = self.next_word();
-                        self.load_to_memory(nn, self.registers.a.get());
+                        self.load_to_memory(nn, self.registers.a.get())
                     }
                     6 => {
                         // LD A, (0xFF00 + C)
@@ -304,6 +308,7 @@ impl CPU {
                         let value = self.bus.read_byte(addr);
                         self.registers.a.set(value);
                         self.increment_cycles(2);
+                        return;
                     }
                     7 => {
                         // LD A, (nn)
@@ -311,6 +316,7 @@ impl CPU {
                         let value = self.bus.read_byte(addr);
                         self.registers.a.set(value);
                         self.increment_cycles(3);
+                        return;
                     }
                     _ => panic!("Y has range 0 - 7, got {:?}", y),
                 },
@@ -359,9 +365,7 @@ impl CPU {
                         ),
                     }
                 }
-                7 => {
-                    self.rst(y as u16 * 8);
-                }
+                7 => self.rst(y as u16 * 8),
                 _ => {
                     panic!("Z has range 0 - 7, got {:?}", z);
                 }
