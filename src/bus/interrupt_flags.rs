@@ -60,3 +60,13 @@ pub fn get_interrupt_address(interrupt: InterruptType) -> InterruptAddress {
         InterruptType::Joypad => InterruptAddress::Joypad,
     }
 }
+
+pub fn is_interrupt_pending(bus: &Bus) -> bool {
+    let interrupt_flags = bus.read_byte(INTERRUPT_FLAG_ADDR);
+    let interrupt_enable = bus.read_byte(INTERRUPT_ENABLE_ADDR);
+
+    // Any set bits in the IF register are only requesting an interrupt, the actual
+    // execution of the interrupt handler only happens if both IME and IE
+    // allow it to be serviced
+    return interrupt_flags & interrupt_enable != 0;
+}

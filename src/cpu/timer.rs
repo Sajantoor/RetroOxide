@@ -28,7 +28,9 @@ impl Timer {
         }
     }
 
-    pub fn update_timer(&mut self, bus: &mut Bus, cycles: i32) {
+    pub fn update_timer(&mut self, bus: &mut Bus, cycles: usize) {
+        let cycles = cycles.try_into().unwrap();
+
         self.update_divider_register(bus, cycles);
 
         if !self.is_clock_enabled(bus) {
@@ -47,7 +49,6 @@ impl Timer {
                 bus.write_byte(TIMA_REGISTER, timer_value + 1);
             }
 
-            // select new clock
             self.select_clock(bus);
         }
     }
@@ -81,10 +82,10 @@ impl Timer {
     fn update_divider_register(&mut self, bus: &mut Bus, cycles: i32) {
         self.divider_counter += cycles;
         if self.divider_counter >= 0xFF {
-            self.divider_counter = 0;
+            self.divider_counter = self.divider_counter - 0xFF;
             // TODO: This is a hack since we're not allowed to write to the divider register directly
             let byte = bus.get_pointer(DIVIDER_REGISTER);
-            *byte = *byte + 1;
+            *byte = byte.wrapping_add(1);
         }
     }
 }

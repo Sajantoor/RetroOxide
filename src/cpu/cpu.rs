@@ -2,10 +2,11 @@ use std::cell::Cell;
 
 use crate::bus::bus::Bus;
 use crate::bus::interrupt_flags::{
-    INTERRUPT_ENABLE_ADDR, INTERRUPT_FLAG_ADDR, acknowledge_interrupt, get_interrupt_address,
+    self, INTERRUPT_ENABLE_ADDR, INTERRUPT_FLAG_ADDR, acknowledge_interrupt, get_interrupt_address,
     get_requested_interrupt,
 };
 use crate::cpu::registers::Registers;
+use crate::cpu::timer::Timer;
 use crate::rom::cartridge::Cartridge;
 
 #[derive(Debug)]
@@ -20,6 +21,7 @@ pub struct CPU {
     cycles: Cell<usize>, // in M-cycle
     bus: Bus,
     ime_flag: bool,
+    timer: Timer,
 }
 
 /**
@@ -32,6 +34,7 @@ impl CPU {
             cycles: Cell::new(0),
             bus: Bus::new(cartridge),
             ime_flag: false, // IME is unset (interrupts are disabled) when the game starts running.
+            timer: Timer::new(),
         }
     }
 
@@ -59,8 +62,14 @@ impl CPU {
         self.print_state();
         let ime_flag_before = self.ime_flag;
 
+        let cycles_before = self.cycles.get();
+
         let opcode = self.next_byte();
         self.handle_instruction(opcode);
+
+        let cycles_diff = self.cycles.get() - cycles_before;
+
+        self.timer.update_timer(&mut self.bus, cycles_diff.into());
 
         // The effect of ei is delayed by one instruction
         if ime_flag_before && self.ime_flag {
@@ -396,6 +405,7 @@ impl CPU {
             self.ime_flag = false;
             if let Some(interrupt) = get_requested_interrupt(triggered_interrupts) {
                 acknowledge_interrupt(&mut self.bus, interrupt_flags, interrupt);
+                self.print_state();
                 // TODO: This is a hack since we're calling call and call increment 7 cycles
                 let cycles = self.cycles.get();
 
@@ -406,7 +416,12 @@ impl CPU {
                 // Increment cycles for handling the interrupt
                 self.cycles.set(cycles + 5);
                 // update pc
-                self.registers.pc.set(self.registers.pc.get() + 1);
+                self.registers.pc.set(self.registers.pc.get());
+
+                // TODO: this is a hack for gameboy doctor where it executes the first
+                // instruction in the interrupt handler right away
+                let opcode = self.next_byte();
+                self.handle_instruction(opcode);
             }
         }
     }
@@ -502,8 +517,12 @@ impl CPU {
     }
 
     fn halt(&mut self) {
-        unimplemented!();
-        self.increment_cycles(1);
+        while !interrupt_flags::is_interrupt_pending(&self.bus) {
+            self.increment_cycles(1);
+            self.timer.update_timer(&mut self.bus, 1);
+        }
+
+        // TODO: Halt bug is not implemented
     }
 
     fn stop(&self) {

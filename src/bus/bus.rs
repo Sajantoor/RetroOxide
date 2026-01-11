@@ -43,6 +43,11 @@ impl Bus {
 
     pub fn read_byte(&self, addr: u16) -> u8 {
         let index = addr as usize;
+        // hard code for gameboy doctor
+        if addr == 0xFF44 {
+            return 0x90;
+        }
+
         match index {
             0x0000..0x8000 => self.mapper.read(addr),
             0x8000..=0x9FFF => self.vram[index - 0x8000],
@@ -81,6 +86,11 @@ impl Bus {
             0xFEA0..=0xFEFF => {
                 // Not usable memory area
                 unimplemented!("Not usable memory area");
+            }
+            // TODO: Need to handle changes in the clock frequency
+            0xFF04 => {
+                // GameBoy does not allow writing to the divider register, it resets it to zero when written to
+                self.io_regs[index - 0xFF04] = 0;
             }
             0xFF00..=0xFF7F => self.io_regs[index - 0xFF00] = value,
             0xFF80..=0xFFFE => self.hram[index - 0xFF80] = value,
