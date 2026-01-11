@@ -1,10 +1,7 @@
 use std::cell::Cell;
 
 use crate::bus::bus::Bus;
-use crate::bus::interrupt_flags::{
-    self, INTERRUPT_ENABLE_ADDR, INTERRUPT_FLAG_ADDR, acknowledge_interrupt, get_interrupt_address,
-    get_requested_interrupt,
-};
+use crate::bus::interrupt_flags::{self, INTERRUPT_ENABLE_ADDR, INTERRUPT_FLAG_ADDR};
 use crate::cpu::registers::Registers;
 use crate::cpu::timer::Timer;
 use crate::rom::cartridge::Cartridge;
@@ -403,25 +400,21 @@ impl CPU {
             }
 
             self.ime_flag = false;
-            if let Some(interrupt) = get_requested_interrupt(triggered_interrupts) {
-                acknowledge_interrupt(&mut self.bus, interrupt_flags, interrupt);
+            if let Some(interrupt) = interrupt_flags::get_requested_interrupt(triggered_interrupts)
+            {
+                interrupt_flags::acknowledge_interrupt(&mut self.bus, interrupt_flags, interrupt);
                 self.print_state();
                 // TODO: This is a hack since we're calling call and call increment 7 cycles
                 let cycles = self.cycles.get();
 
                 // Call the interrupt handler
-                let addr = get_interrupt_address(interrupt) as u16;
+                let addr = interrupt_flags::get_interrupt_address(interrupt) as u16;
                 self.call(addr);
 
                 // Increment cycles for handling the interrupt
                 self.cycles.set(cycles + 5);
                 // update pc
                 self.registers.pc.set(self.registers.pc.get());
-
-                // TODO: this is a hack for gameboy doctor where it executes the first
-                // instruction in the interrupt handler right away
-                let opcode = self.next_byte();
-                self.handle_instruction(opcode);
             }
         }
     }

@@ -43,11 +43,6 @@ impl Bus {
 
     pub fn read_byte(&self, addr: u16) -> u8 {
         let index = addr as usize;
-        // hard code for gameboy doctor
-        if addr == 0xFF44 {
-            return 0x90;
-        }
-
         match index {
             0x0000..0x8000 => self.mapper.read(addr),
             0x8000..=0x9FFF => self.vram[index - 0x8000],
