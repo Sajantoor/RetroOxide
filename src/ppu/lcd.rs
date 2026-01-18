@@ -1,0 +1,171 @@
+use crate::{
+    bus::bus::Bus, bus::interrupt_flags, bus::interrupt_flags::InterruptType, utils::test_bit,
+};
+
+const LCD_CONTROL_REGISTER: u16 = 0xFF40;
+const LDC_STATUS_REGISTER: u16 = 0xFF41;
+const LCD_Y_CORD_REGISTER: u16 = 0xFF44;
+const LCD_Y_CORD_COMPARE_REGISTER: u16 = 0xFF45;
+
+const HEIGHT: u8 = 160;
+const WIDTH: u8 = 144;
+
+const SCAN_LINES: u8 = 154;
+const VISIBLE_SCAN_LINES: u8 = WIDTH;
+
+const SCAN_LINE_TIME: u16 = 456; // 456 clock cycles 
+const MODE_2_TIME: u16 = 80;
+const MODE_3_TIME: u16 = 172;
+const MODE_2_BOUNDS: u16 = SCAN_LINE_TIME - MODE_2_TIME;
+const MODE_3_BOUNDS: u16 = MODE_2_BOUNDS - MODE_3_TIME;
+
+#[derive(Debug, PartialEq, Eq, num_enum::IntoPrimitive)]
+#[repr(u8)]
+enum LcdControl {
+    LdcEnable = 7,
+    WindowTitleMapArea = 6,
+    WindowEnable = 5,
+    BgWindowTitleArea = 4,
+    BgTileMapArea = 3,
+    ObjSize = 2,
+    ObjEnable = 1,
+    BgWindowEnable = 0,
+}
+
+enum LcdStatus {
+    // bit 7 is unused
+    LycIntSelect = 6,
+    Mode2IntSelect = 5,
+    Mode1IntSelect = 4,
+    Mode0IntSelect = 3,
+    LycEqLy = 2,
+    // bit 0 - 1 select the LDC mode
+}
+
+#[derive(PartialEq, Eq)]
+enum LcdMode {
+    TransferringDataToLcdDriver = 3,
+    SearchingSpritesAtt = 2,
+    VBlank = 1,
+    HBlank = 0,
+}
+
+pub struct Lcd {
+    scanline_counter: u16,
+}
+
+impl Lcd {
+    fn update_lcd(&mut self, bus: &mut Bus) {
+        if !self.is_lcd_enabled(bus) {
+            self.scanline_counter = 456;
+            bus.write_byte(LCD_Y_CORD_REGISTER, 0);
+            // reset status bits
+            let status = bus.read_byte(LDC_STATUS_REGISTER) & 0xFC;
+            bus.write_byte(LDC_STATUS_REGISTER, status);
+
+            self.set_lcd_mode(bus, LcdMode::VBlank);
+            return;
+        }
+
+        let current_line = bus.read_byte(LCD_Y_CORD_REGISTER);
+        let current_mode = self.get_lcd_mode(bus);
+        let mode: LcdMode;
+
+        if current_line >= VISIBLE_SCAN_LINES {
+            mode = LcdMode::VBlank;
+        } else if self.scanline_counter >= MODE_2_BOUNDS {
+            mode = LcdMode::SearchingSpritesAtt;
+        } else if self.scanline_counter >= MODE_3_BOUNDS {
+            mode = LcdMode::TransferringDataToLcdDriver;
+        } else {
+            mode = LcdMode::HBlank;
+        }
+
+        if mode != current_mode {
+            let interrupt_requested = self.is_interrupt_requested(bus, &mode);
+            if interrupt_requested {
+                interrupt_flags::request_interrupt(bus, InterruptType::LCDStat);
+            }
+            self.set_lcd_mode(bus, mode);
+        }
+
+        let ly_compare = bus.read_byte(LCD_Y_CORD_COMPARE_REGISTER);
+        if current_line == ly_compare {
+            self.set_lyc_equal_ly(bus, true);
+
+            if self.is_lyc_equal_ly_interrupt_enabled(bus) {
+                interrupt_flags::request_interrupt(bus, InterruptType::LCDStat);
+            }
+        } else if self.is_lyc_equal_ly(bus) {
+            self.set_lyc_equal_ly(bus, false);
+        }
+    }
+
+    fn is_lyc_equal_ly_interrupt_enabled(&self, bus: &Bus) -> bool {
+        let byte = bus.read_byte(LDC_STATUS_REGISTER);
+        return test_bit(byte, LcdStatus::LycIntSelect as u8);
+    }
+
+    fn is_lyc_equal_ly(&self, bus: &Bus) -> bool {
+        let byte = bus.read_byte(LDC_STATUS_REGISTER);
+        return test_bit(byte, LcdStatus::LycEqLy as u8);
+    }
+
+    fn set_lyc_equal_ly(&self, bus: &mut Bus, equal: bool) {
+        let mut byte = bus.read_byte(LDC_STATUS_REGISTER);
+        if equal {
+            byte |= 1 << (LcdStatus::LycEqLy as u8);
+        } else {
+            byte &= !(1 << (LcdStatus::LycEqLy as u8));
+        }
+        bus.write_byte(LDC_STATUS_REGISTER, byte);
+    }
+
+    fn set_lcd_mode(&self, bus: &mut Bus, mode: LcdMode) {
+        let mut byte = bus.read_byte(LDC_STATUS_REGISTER);
+        byte &= !0x03; // Clear the last two bits
+        byte |= mode as u8;
+        bus.write_byte(LDC_STATUS_REGISTER, byte);
+    }
+
+    fn is_interrupt_requested(&self, bus: &Bus, mode: &LcdMode) -> bool {
+        let byte = bus.read_byte(LDC_STATUS_REGISTER);
+        return match mode {
+            LcdMode::HBlank => test_bit(byte, LcdStatus::Mode0IntSelect as u8),
+            LcdMode::VBlank => test_bit(byte, LcdStatus::Mode1IntSelect as u8),
+            LcdMode::SearchingSpritesAtt => test_bit(byte, LcdStatus::Mode2IntSelect as u8),
+            LcdMode::TransferringDataToLcdDriver => false,
+        };
+    }
+
+    fn read_from_lcd_control_register(&self, bus: &Bus) -> u8 {
+        bus.read_byte(LCD_CONTROL_REGISTER)
+    }
+
+    fn is_lcd_enabled(&self, bus: &Bus) -> bool {
+        let byte = self.read_from_lcd_control_register(bus);
+        return test_bit(byte, LcdControl::LdcEnable.into());
+    }
+
+    fn is_window_enabled(&self, bus: &Bus) -> bool {
+        let byte = self.read_from_lcd_control_register(bus);
+        return test_bit(byte, LcdControl::WindowEnable.into());
+    }
+
+    fn is_bg_window_enabled(&self, bus: &Bus) -> bool {
+        let byte = self.read_from_lcd_control_register(bus);
+        return test_bit(byte, LcdControl::BgWindowEnable.into());
+    }
+
+    fn get_lcd_mode(&self, bus: &Bus) -> LcdMode {
+        let byte = bus.read_byte(LDC_STATUS_REGISTER);
+        let status = 0x03 & byte;
+        return match status {
+            0 => LcdMode::HBlank,
+            1 => LcdMode::VBlank,
+            2 => LcdMode::SearchingSpritesAtt,
+            3 => LcdMode::TransferringDataToLcdDriver,
+            _ => panic!("Invalid LCD mode"),
+        };
+    }
+}

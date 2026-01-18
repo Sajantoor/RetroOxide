@@ -87,6 +87,10 @@ impl Bus {
                 // GameBoy does not allow writing to the divider register, it resets it to zero when written to
                 self.io_regs[index - 0xFF04] = 0;
             }
+            0xFF44 => {
+                // LY register, writing to it resets it to 0
+                self.io_regs[index - 0xFF44] = 0;
+            }
             0xFF00..=0xFF7F => self.io_regs[index - 0xFF00] = value,
             0xFF80..=0xFFFE => self.hram[index - 0xFF80] = value,
             0xFFFF => self.ie_reg = value,

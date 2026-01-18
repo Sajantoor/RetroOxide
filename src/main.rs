@@ -2,6 +2,7 @@ mod bus;
 mod cpu;
 mod emu;
 mod mappers;
+mod ppu;
 mod rom;
 mod utils;
 
