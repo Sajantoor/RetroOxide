@@ -55,7 +55,42 @@ pub struct Lcd {
 }
 
 impl Lcd {
-    fn update_lcd(&mut self, bus: &mut Bus) {
+    pub fn new() -> Self {
+        Lcd {
+            scanline_counter: SCAN_LINE_TIME,
+        }
+    }
+
+    fn update_graphics(&mut self, bus: &mut Bus, cycles: u16) {
+        self.update_ldc_status(bus);
+
+        if !self.is_lcd_enabled(bus) {
+            return;
+        }
+
+        self.scanline_counter = self.scanline_counter.saturating_sub(cycles);
+        if self.scanline_counter > 0 {
+            return;
+        }
+
+        // move to next scanline
+        let current_line_ptr = bus.get_pointer(LCD_Y_CORD_REGISTER);
+        let current_scan_line = *current_line_ptr;
+        self.scanline_counter += SCAN_LINE_TIME;
+
+        if current_scan_line == VISIBLE_SCAN_LINES {
+            // Entered VBlank
+            interrupt_flags::request_interrupt(bus, InterruptType::VBlank);
+        } else if current_scan_line > SCAN_LINES {
+            // Restart scanning from the top
+            *current_line_ptr = 0;
+        } else {
+            *current_line_ptr += 1;
+            self.draw_scanline(bus);
+        }
+    }
+
+    fn update_ldc_status(&mut self, bus: &mut Bus) {
         if !self.is_lcd_enabled(bus) {
             self.scanline_counter = 456;
             bus.write_byte(LCD_Y_CORD_REGISTER, 0);
@@ -99,6 +134,10 @@ impl Lcd {
         } else if self.is_lyc_equal_ly(bus) {
             self.set_lyc_equal_ly(bus, false);
         }
+    }
+
+    fn draw_scanline(&self, bus: &mut Bus) {
+        unimplemented!();
     }
 
     fn is_lyc_equal_ly_interrupt_enabled(&self, bus: &Bus) -> bool {
