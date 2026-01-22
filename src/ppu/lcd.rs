@@ -61,8 +61,9 @@ impl Lcd {
         }
     }
 
-    fn update_graphics(&mut self, bus: &mut Bus, cycles: u16) {
+    pub fn update_graphics(&mut self, bus: &mut Bus, cycles: usize) {
         self.update_ldc_status(bus);
+        let cycles = cycles as u16;
 
         if !self.is_lcd_enabled(bus) {
             return;

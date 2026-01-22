@@ -28,7 +28,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(cartridge: Cartridge) -> Self {
+    pub fn new(cartridge: &Cartridge) -> Self {
         Bus {
             mapper: Mbc1::new(cartridge),
             vram: [0; 0x2000],

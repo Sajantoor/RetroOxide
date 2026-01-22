@@ -8,7 +8,7 @@ pub(crate) struct Mbc1 {
 }
 
 impl Mapper for Mbc1 {
-    fn new(cartridge: Cartridge) -> Self {
+    fn new(cartridge: &Cartridge) -> Self {
         Mbc1 {
             rom_data: cartridge.get_data().to_vec(),
             is_ram_enabled: false,

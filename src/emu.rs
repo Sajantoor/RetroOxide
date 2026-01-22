@@ -1,10 +1,11 @@
-use crate::{cpu::cpu::CPU, rom::cartridge::Cartridge};
+use crate::{bus::timer::Timer, cpu::cpu::CPU, ppu::lcd::Lcd, rom::cartridge::Cartridge};
 
 pub struct Context {
     is_running: bool,
     is_paused: bool,
-    ticks: u64,
     cpu: CPU,
+    timer: Timer,
+    lcd: Lcd,
 }
 
 impl Context {
@@ -12,8 +13,9 @@ impl Context {
         Context {
             is_running: false,
             is_paused: false,
-            ticks: 0,
-            cpu: CPU::new(cartridge),
+            cpu: CPU::new(&cartridge),
+            timer: Timer::new(),
+            lcd: Lcd::new(),
         }
     }
 
@@ -27,16 +29,21 @@ impl Context {
         self.is_paused = true;
     }
 
+    pub fn step(&mut self) {
+        let cycle_diff = self.cpu.step();
+        self.timer.update_timer(&mut self.cpu.bus, cycle_diff);
+        self.lcd.update_graphics(&mut self.cpu.bus, cycle_diff);
+        self.cpu.handle_interrupts();
+    }
+
     fn run(&mut self) {
         while self.is_running {
             if !self.is_paused {
-                self.cpu.step();
+                self.step();
                 // delay
             } else {
                 // sleep
             }
-
-            self.ticks += 1;
         }
     }
 }

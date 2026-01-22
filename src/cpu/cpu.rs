@@ -3,7 +3,6 @@ use std::cell::Cell;
 use crate::bus::bus::Bus;
 use crate::bus::interrupt_flags::{self, INTERRUPT_ENABLE_ADDR, INTERRUPT_FLAG_ADDR};
 use crate::cpu::registers::Registers;
-use crate::cpu::timer::Timer;
 use crate::rom::cartridge::Cartridge;
 
 #[derive(Debug)]
@@ -16,25 +15,29 @@ pub struct CPU {
     // M-Cycle (m)
     //     Four T-Cycles - 1,048,576 hz
     cycles: Cell<usize>, // in M-cycle
-    bus: Bus,
+    // Making this public is not ideal, but it's easier for now as basically the entire CPU needs the bus
+    // Also makes it easier to not have to handle lifetimes and generic parameters. Both at the same time.
+    pub(crate) bus: Bus,
     ime_flag: bool,
-    timer: Timer,
+    // Used to delay the effect of EI instruction by one instruction
+    previous_ime_flag: bool,
 }
 
 /**
  * For each instruction, we need to emulate the function + addressing mode + cycles
 */
 impl CPU {
-    pub fn new(cartridge: Cartridge) -> Self {
+    pub fn new(cartridge: &Cartridge) -> Self {
         CPU {
             registers: Registers::new(),
             cycles: Cell::new(0),
             bus: Bus::new(cartridge),
             ime_flag: false, // IME is unset (interrupts are disabled) when the game starts running.
-            timer: Timer::new(),
+            previous_ime_flag: false,
         }
     }
 
+    #[allow(dead_code, reason = "Debugging function")]
     fn print_state(&self) {
         println!(
             "A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}",
@@ -55,23 +58,15 @@ impl CPU {
         );
     }
 
-    pub fn step(&mut self) {
-        self.print_state();
-        let ime_flag_before = self.ime_flag;
-
+    pub fn step(&mut self) -> usize {
         let cycles_before = self.cycles.get();
+        self.previous_ime_flag = self.ime_flag;
 
         let opcode = self.next_byte();
         self.handle_instruction(opcode);
 
         let cycles_diff = self.cycles.get() - cycles_before;
-
-        self.timer.update_timer(&mut self.bus, cycles_diff.into());
-
-        // The effect of ei is delayed by one instruction
-        if ime_flag_before && self.ime_flag {
-            self.handle_interrupts();
-        }
+        return cycles_diff;
     }
 
     fn next_byte(&self) -> u8 {
@@ -385,7 +380,11 @@ impl CPU {
         self.nop();
     }
 
-    fn handle_interrupts(&mut self) {
+    pub fn handle_interrupts(&mut self) {
+        if self.ime_flag != true || self.previous_ime_flag != true {
+            return;
+        }
+
         // Handle multiple or nested interrupts by priority
         while self.ime_flag {
             let interrupt_flags = self.bus.read_byte(INTERRUPT_FLAG_ADDR);
@@ -403,7 +402,6 @@ impl CPU {
             if let Some(interrupt) = interrupt_flags::get_requested_interrupt(triggered_interrupts)
             {
                 interrupt_flags::acknowledge_interrupt(&mut self.bus, interrupt_flags, interrupt);
-                self.print_state();
                 // TODO: This is a hack since we're calling call and call increment 7 cycles
                 let cycles = self.cycles.get();
 
@@ -510,9 +508,14 @@ impl CPU {
     }
 
     fn halt(&mut self) {
-        while !interrupt_flags::is_interrupt_pending(&self.bus) {
+        if !interrupt_flags::is_interrupt_pending(&self.bus) {
             self.increment_cycles(1);
-            self.timer.update_timer(&mut self.bus, 1);
+            // TODO: Maybe this can be improved later
+            // Don't update the PC while halted so, that this instruction is still
+            // the current one, we subtract one here since we already incremented it
+            // when fetching the opcode
+            let pc = self.registers.pc.get();
+            self.registers.pc.set(pc - 1);
         }
 
         // TODO: Halt bug is not implemented
