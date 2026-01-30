@@ -1,2 +1,3 @@
 pub mod lcd;
-pub mod ppu;
+mod ppu;
+mod tile;

@@ -1,5 +1,10 @@
 use crate::{
-    bus::bus::Bus, bus::interrupt_flags, bus::interrupt_flags::InterruptType, utils::test_bit,
+    bus::{
+        bus::Bus,
+        interrupt_flags::{self, InterruptType},
+    },
+    ppu::ppu::PPU,
+    utils::test_bit,
 };
 
 const LCD_CONTROL_REGISTER: u16 = 0xFF40;
@@ -7,11 +12,11 @@ const LDC_STATUS_REGISTER: u16 = 0xFF41;
 const LCD_Y_CORD_REGISTER: u16 = 0xFF44;
 const LCD_Y_CORD_COMPARE_REGISTER: u16 = 0xFF45;
 
-const HEIGHT: u8 = 160;
-const WIDTH: u8 = 144;
+pub(crate) const SCREEN_HEIGHT: u8 = 160;
+pub(crate) const SCREEN_WIDTH: u8 = 144;
 
 const SCAN_LINES: u8 = 154;
-const VISIBLE_SCAN_LINES: u8 = WIDTH;
+const VISIBLE_SCAN_LINES: u8 = SCREEN_WIDTH;
 
 const SCAN_LINE_TIME: u16 = 456; // 456 clock cycles 
 const MODE_2_TIME: u16 = 80;
@@ -50,14 +55,17 @@ enum LcdMode {
     HBlank = 0,
 }
 
+#[derive(Debug)]
 pub struct Lcd {
     scanline_counter: u16,
+    ppu: PPU,
 }
 
 impl Lcd {
     pub fn new() -> Self {
         Lcd {
             scanline_counter: SCAN_LINE_TIME,
+            ppu: PPU::new(),
         }
     }
 
@@ -81,13 +89,15 @@ impl Lcd {
 
         if current_scan_line == VISIBLE_SCAN_LINES {
             // Entered VBlank
+            // draw the background here
+            self.ppu.render_bg(bus, &self);
             interrupt_flags::request_interrupt(bus, InterruptType::VBlank);
         } else if current_scan_line > SCAN_LINES {
             // Restart scanning from the top
             *current_line_ptr = 0;
         } else {
             *current_line_ptr += 1;
-            self.draw_scanline(bus);
+            // self.draw_scanline(bus);
         }
     }
 
@@ -138,7 +148,7 @@ impl Lcd {
     }
 
     fn draw_scanline(&self, bus: &mut Bus) {
-        unimplemented!();
+        todo!();
     }
 
     fn is_lyc_equal_ly_interrupt_enabled(&self, bus: &Bus) -> bool {
@@ -192,7 +202,19 @@ impl Lcd {
         return test_bit(byte, LcdControl::WindowEnable.into());
     }
 
-    fn is_bg_window_enabled(&self, bus: &Bus) -> bool {
+    pub fn get_bg_window_tile_data_area_start(&self, bus: &Bus) -> u16 {
+        let byte = self.read_from_lcd_control_register(bus);
+        let value = test_bit(byte, LcdControl::BgWindowTitleArea.into());
+        if value { 0x8000 } else { 0x8800 }
+    }
+
+    pub fn get_bg_tile_map_area_start(&self, bus: &Bus) -> u16 {
+        let byte = self.read_from_lcd_control_register(bus);
+        let value = test_bit(byte, LcdControl::BgTileMapArea.into());
+        if value { 0x9C00 } else { 0x9800 }
+    }
+
+    pub fn is_bg_window_enabled(&self, bus: &Bus) -> bool {
         let byte = self.read_from_lcd_control_register(bus);
         return test_bit(byte, LcdControl::BgWindowEnable.into());
     }
