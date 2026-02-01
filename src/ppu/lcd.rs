@@ -3,7 +3,7 @@ use crate::{
         bus::Bus,
         interrupt_flags::{self, InterruptType},
     },
-    ppu::ppu::PPU,
+    ppu::ppu::{BUFFER_SIZE, PPU},
     utils::test_bit,
 };
 
@@ -11,6 +11,7 @@ const LCD_CONTROL_REGISTER: u16 = 0xFF40;
 const LDC_STATUS_REGISTER: u16 = 0xFF41;
 const LCD_Y_CORD_REGISTER: u16 = 0xFF44;
 const LCD_Y_CORD_COMPARE_REGISTER: u16 = 0xFF45;
+const BG_PALETTE: u16 = 0xFF47;
 
 pub(crate) const SCREEN_HEIGHT: u8 = 160;
 pub(crate) const SCREEN_WIDTH: u8 = 144;
@@ -90,7 +91,7 @@ impl Lcd {
         if current_scan_line == VISIBLE_SCAN_LINES {
             // Entered VBlank
             // draw the background here
-            self.ppu.render_bg(bus, &self);
+            let buffer = self.ppu.render_bg(bus, &self);
             interrupt_flags::request_interrupt(bus, InterruptType::VBlank);
         } else if current_scan_line > SCAN_LINES {
             // Restart scanning from the top
@@ -229,5 +230,21 @@ impl Lcd {
             3 => LcdMode::TransferringDataToLcdDriver,
             _ => panic!("Invalid LCD mode"),
         };
+    }
+
+    pub fn get_background_palette(&self, bus: &Bus) -> [u8; 4] {
+        let byte = bus.read_byte(BG_PALETTE);
+        return self.decode_palette(byte);
+    }
+
+    fn decode_palette(&self, byte: u8) -> [u8; 4] {
+        // 	            7	6	5	4	3	2	1	0
+        // Color for...	ID 3	ID 2	ID 1	ID 0
+        return [
+            byte & 0x03,        // bits 1 and 2
+            (byte & 0x0C) >> 2, // bits 3 and 4, shifted
+            (byte & 0x0C) >> 4, // bits 5 and 6, shifted
+            (byte & 0xC0) >> 6, // bits 7 and 8, shifted
+        ];
     }
 }

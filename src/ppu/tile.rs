@@ -43,14 +43,4 @@ impl Tile {
     pub fn get_row(&self, row: usize) -> [u8; 8] {
         self.pixels[row]
     }
-
-    pub fn print_tile(&self) {
-        // print the hex values in a row
-        for row in &self.pixels {
-            for &pixel in row {
-                print!("{:X} ", pixel);
-            }
-            println!();
-        }
-    }
 }
