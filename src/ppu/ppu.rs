@@ -1,8 +1,8 @@
 use crate::{
     bus::bus::Bus,
     ppu::{
-        lcd::{Lcd, SCREEN_HEIGHT, SCREEN_WIDTH},
-        palette::GB_PALETTE,
+        lcd::{BUFFER_SIZE, Lcd, SCREEN_HEIGHT, SCREEN_WIDTH},
+        palette::SYSTEM_PALETTE,
         tile::Tile,
     },
 };
@@ -14,7 +14,6 @@ const TILE_MAP_AREA_SIZE: usize = 0x0400;
 const TILE_SIZE: usize = 8;
 // Tile maps are 1 byte indexes
 
-pub const BUFFER_SIZE: usize = (SCREEN_HEIGHT as usize * SCREEN_WIDTH as usize) * 4; // 4 for RGBA
 const NUM_TILES_HIGH: usize = SCREEN_HEIGHT as usize / TILE_SIZE;
 const NUM_TILES_WIDTH: usize = SCREEN_WIDTH as usize / TILE_SIZE;
 
@@ -53,7 +52,7 @@ impl PPU {
                         let pixel_x = x + tx * TILE_SIZE;
                         let value = row[x];
                         let palette_index = palette[value as usize];
-                        let colour = GB_PALETTE[palette_index as usize];
+                        let colour = SYSTEM_PALETTE[palette_index as usize];
 
                         // copy the colour into the buffer at the right spot
                         let buffer_index = 4 * (pixel_y * SCREEN_WIDTH as usize + pixel_x);

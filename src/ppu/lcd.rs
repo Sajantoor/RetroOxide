@@ -3,7 +3,7 @@ use crate::{
         bus::Bus,
         interrupt_flags::{self, InterruptType},
     },
-    ppu::ppu::{BUFFER_SIZE, PPU},
+    ppu::ppu::PPU,
     utils::test_bit,
 };
 
@@ -13,6 +13,7 @@ const LCD_Y_CORD_REGISTER: u16 = 0xFF44;
 const LCD_Y_CORD_COMPARE_REGISTER: u16 = 0xFF45;
 const BG_PALETTE: u16 = 0xFF47;
 
+pub(crate) const BUFFER_SIZE: usize = (SCREEN_HEIGHT as usize * SCREEN_WIDTH as usize) * 4; // 4 for RGBA
 pub(crate) const SCREEN_HEIGHT: u8 = 160;
 pub(crate) const SCREEN_WIDTH: u8 = 144;
 
@@ -70,17 +71,17 @@ impl Lcd {
         }
     }
 
-    pub fn update_graphics(&mut self, bus: &mut Bus, cycles: usize) {
+    pub fn update_graphics(&mut self, bus: &mut Bus, cycles: usize) -> Option<[u8; BUFFER_SIZE]> {
         self.update_ldc_status(bus);
         let cycles = cycles as u16;
 
         if !self.is_lcd_enabled(bus) {
-            return;
+            return None;
         }
 
         self.scanline_counter = self.scanline_counter.saturating_sub(cycles);
         if self.scanline_counter > 0 {
-            return;
+            return None;
         }
 
         // move to next scanline
@@ -93,6 +94,7 @@ impl Lcd {
             // draw the background here
             let buffer = self.ppu.render_bg(bus, &self);
             interrupt_flags::request_interrupt(bus, InterruptType::VBlank);
+            return Some(buffer);
         } else if current_scan_line > SCAN_LINES {
             // Restart scanning from the top
             *current_line_ptr = 0;
@@ -100,6 +102,8 @@ impl Lcd {
             *current_line_ptr += 1;
             // self.draw_scanline(bus);
         }
+
+        return None;
     }
 
     fn update_ldc_status(&mut self, bus: &mut Bus) {

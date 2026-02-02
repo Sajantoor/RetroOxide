@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 num_enum = "0.7.4"
+pixels = "0.15.0"
+winit = "0.30.12"

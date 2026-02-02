@@ -4,6 +4,7 @@ mod emu;
 mod mappers;
 mod ppu;
 mod rom;
+mod ui;
 mod utils;
 
 use crate::rom::cartridge::Cartridge;
@@ -19,8 +20,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cartridge = Cartridge::new(&file_path)?;
 
-    let mut context = emu::Context::new(cartridge);
-    context.start();
+    let context = emu::Context::new(cartridge);
+    let mut ui = ui::UI::new(context);
+    ui.start();
 
     Ok(())
 }

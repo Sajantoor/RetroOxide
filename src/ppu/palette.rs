@@ -1,4 +1,4 @@
-pub const GB_PALETTE: [[u8; 4]; 4] = [
+pub const SYSTEM_PALETTE: [[u8; 4]; 4] = [
     [255, 255, 255, 255],
     [128, 128, 128, 255],
     [64, 64, 64, 255],
