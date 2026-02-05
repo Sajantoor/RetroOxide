@@ -28,13 +28,27 @@ pub struct CPU {
 */
 impl CPU {
     pub fn new(cartridge: &Cartridge) -> Self {
-        CPU {
+        let mut cpu = CPU {
             registers: Registers::new(),
             cycles: Cell::new(0),
             bus: Bus::new(cartridge),
             ime_flag: false, // IME is unset (interrupts are disabled) when the game starts running.
             previous_ime_flag: false,
-        }
+        };
+
+        cpu.boot();
+        return cpu;
+    }
+
+    fn boot(&mut self) {
+        // https://gbdev.io/pandocs/Power_Up_Sequence.html?highlight=boot#cgb0
+        self.bus.write_byte(0xFF07, 0xF8); // TAC
+        self.bus.write_byte(0xFF0F, 0xE1); // IF
+        self.bus.write_byte(0xFF40, 0x91); // LCDC
+        self.bus.write_byte(0xFF41, 0x85); // STAT
+        self.bus.write_byte(0xFF44, 0x91); // LY
+        self.bus.write_byte(0xFF46, 0xFF); // DMA
+        self.bus.write_byte(0xFF47, 0xFC); // BGP
     }
 
     #[allow(dead_code, reason = "Debugging function")]
