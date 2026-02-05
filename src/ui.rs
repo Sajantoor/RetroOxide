@@ -48,11 +48,6 @@ impl<'a> ApplicationHandler for App<'a> {
         self.context.start();
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        self.update_control_flow(event_loop);
-        self.step();
-    }
-
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -67,12 +62,15 @@ impl<'a> ApplicationHandler for App<'a> {
             WindowEvent::RedrawRequested => {
                 if let Some(pixels) = self.pixels.as_mut() {
                     pixels.render().unwrap();
-                    self.update_control_flow(event_loop);
                 }
             }
 
             _ => {}
         }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.get_next_frame();
     }
 }
 
@@ -85,22 +83,22 @@ impl<'a> App<'a> {
         }
     }
 
-    fn step(&mut self) {
-        if self.context.is_running() {
+    fn get_next_frame(&mut self) {
+        while self.context.is_running() {
             let buffer = self.context.step();
             if let Some(buffer) = buffer {
                 let frame = self.pixels.as_mut().unwrap().frame_mut();
                 // update frame
-                frame.copy_from_slice(&buffer);
-                self.window.as_ref().unwrap().request_redraw();
+                // if there's a change in the frame, only then render it.
+                // Otherwise, no point rendering.
+                // Check if there's a change in the frame
+                if frame != buffer {
+                    frame.copy_from_slice(&buffer);
+                    self.window.as_ref().unwrap().request_redraw();
+                    break;
+                }
             }
         }
-    }
-
-    fn update_control_flow(&self, event_loop: &ActiveEventLoop) {
-        let now = Instant::now();
-        let next_frame = now + Duration::from_micros(20);
-        event_loop.set_control_flow(ControlFlow::WaitUntil(next_frame));
     }
 }
 
@@ -112,11 +110,8 @@ impl<'a> UI<'a> {
     }
 
     pub fn start(&mut self) {
-        // have this on a different thread
         let event_loop = EventLoop::new().unwrap();
-        event_loop.set_control_flow(ControlFlow::WaitUntil(
-            Instant::now() + Duration::from_micros(20),
-        ));
+        event_loop.set_control_flow(ControlFlow::Poll);
         let _ = event_loop.run_app(&mut self.app);
     }
 }
