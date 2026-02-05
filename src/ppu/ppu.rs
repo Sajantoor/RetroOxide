@@ -29,7 +29,7 @@ impl PPU {
         // to render the background, we must see which tile map area to use, then
         // parse the tile maps and then parse the tile data area
         if !lcd.is_bg_window_enabled(bus) {
-            return [0; BUFFER_SIZE];
+            return [0xFF; BUFFER_SIZE];
         }
 
         let mut buffer = [0; BUFFER_SIZE];
