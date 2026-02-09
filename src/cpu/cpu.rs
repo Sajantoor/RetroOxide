@@ -137,12 +137,14 @@ impl CPU {
                         false => {
                             // Load instruction:
                             let nn = self.next_word();
-                            self.set_register_from_table_rp(p, nn)
+                            self.set_register_from_table_rp(p, nn);
+                            self.increment_cycles(3)
                         }
                         true => {
                             // Add instruction
                             let value = self.get_register_from_table_rp(p);
-                            self.add_hl(value)
+                            self.add_hl(value);
+                            self.increment_cycles(2)
                         }
                     }
                 }
@@ -247,6 +249,7 @@ impl CPU {
                         let n = self.next_byte();
                         let addr = 0xFF00 + (n as u16);
                         self.load_to_memory(addr, self.registers.a.get());
+                        self.increment_cycles(3);
                         return;
                     }
                     5 => {
@@ -254,12 +257,11 @@ impl CPU {
                         self.add_sp(d)
                     }
                     6 => {
-                        // LD A, (0xFF00 + n)
-                        let n = self.next_byte();
-                        let addr = 0xFF00 + (n as u16);
+                        let n = self.next_byte() as u16;
+                        let addr = 0xFF00 + n;
                         let value = self.bus.read_byte(addr);
                         self.registers.a.set(value);
-                        self.increment_cycles(2);
+                        self.increment_cycles(3);
                         return;
                     }
                     7 => {
@@ -310,12 +312,14 @@ impl CPU {
                     4 => {
                         // LD (oxFF00 + C), A
                         let addr = (self.registers.c.get() as u16) + 0xFF00;
-                        self.load_to_memory(addr, self.registers.a.get())
+                        self.load_to_memory(addr, self.registers.a.get());
+                        self.increment_cycles(2)
                     }
                     5 => {
                         // LD (nn), A
                         let nn = self.next_word();
-                        self.load_to_memory(nn, self.registers.a.get())
+                        self.load_to_memory(nn, self.registers.a.get());
+                        self.increment_cycles(4)
                     }
                     6 => {
                         // LD A, (0xFF00 + C)
@@ -365,6 +369,7 @@ impl CPU {
                 }
                 6 => {
                     let n = self.next_byte();
+                    self.increment_cycles(1);
                     match y {
                         0 => self.add(n),
                         1 => self.adc(n),
@@ -390,8 +395,6 @@ impl CPU {
                 panic!("Invalid x value: {:?}", x);
             }
         }
-
-        self.nop();
     }
 
     pub fn handle_interrupts(&mut self) {
@@ -997,7 +1000,6 @@ impl CPU {
 
     fn load_to_memory(&mut self, addr: u16, value: u8) {
         self.bus.write_byte(addr, value);
-        self.increment_cycles(4);
     }
 
     fn di(&mut self) {
