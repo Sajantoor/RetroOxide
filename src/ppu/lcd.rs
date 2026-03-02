@@ -20,16 +20,15 @@ pub(crate) const SCREEN_WIDTH: u8 = 144;
 const SCAN_LINES: u8 = 154;
 const VISIBLE_SCAN_LINES: u8 = SCREEN_WIDTH;
 
-const SCAN_LINE_TIME: u16 = 456; // 456 clock cycles 
-const MODE_2_TIME: u16 = 80;
-const MODE_3_TIME: u16 = 172;
-const MODE_2_BOUNDS: u16 = SCAN_LINE_TIME - MODE_2_TIME;
-const MODE_3_BOUNDS: u16 = MODE_2_BOUNDS - MODE_3_TIME;
+const SCAN_LINE_TIME: usize = 114; // 456 dots per scanline, 4 dots per M cycle
+const HBLANK_TIME: usize = 204 / 4;
+const OAM_READ_TIME: usize = 80 / 4;
+const VRAM_READ_TIME: usize = 172 / 4;
 
 #[derive(Debug, PartialEq, Eq, num_enum::IntoPrimitive)]
 #[repr(u8)]
 enum LcdControl {
-    LdcEnable = 7,
+    LcdEnable = 7,
     WindowTitleMapArea = 6,
     WindowEnable = 5,
     BgWindowTitleArea = 4,
@@ -49,131 +48,127 @@ enum LcdStatus {
     // bit 0 - 1 select the LDC mode
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 enum LcdMode {
-    TransferringDataToLcdDriver = 3,
-    SearchingSpritesAtt = 2,
-    VBlank = 1,
     HBlank = 0,
+    VBlank = 1,
+    OAMRead = 2,
+    VRAMRead = 3,
 }
 
 #[derive(Debug)]
 pub struct Lcd {
-    scanline_counter: u16,
+    cycles: usize,
     ppu: PPU,
 }
 
 impl Lcd {
     pub fn new() -> Self {
         Lcd {
-            scanline_counter: SCAN_LINE_TIME,
+            cycles: 0,
             ppu: PPU::new(),
         }
     }
 
     pub fn update_graphics(&mut self, bus: &mut Bus, cycles: usize) -> Option<[u8; BUFFER_SIZE]> {
-        self.update_ldc_status(bus);
-        let cycles = cycles as u16;
-
         if !self.is_lcd_enabled(bus) {
             return None;
         }
+        self.update_ldc_status(bus, cycles);
 
-        self.scanline_counter = self.scanline_counter.saturating_sub(cycles);
-        if self.scanline_counter > 0 {
-            return None;
-        }
-
-        // move to next scanline
-        let current_line_ptr = bus.get_pointer(LCD_Y_CORD_REGISTER);
-        let current_scan_line = *current_line_ptr;
-        self.scanline_counter += SCAN_LINE_TIME;
+        let current_scan_line = self.get_current_scanline(bus);
 
         if current_scan_line == VISIBLE_SCAN_LINES {
-            // Entered VBlank
-            // draw the background here
             let buffer = self.ppu.render_bg(bus, &self);
-            interrupt_flags::request_interrupt(bus, InterruptType::VBlank);
             return Some(buffer);
-        } else if current_scan_line > SCAN_LINES {
-            // Restart scanning from the top
-            *current_line_ptr = 0;
-        } else {
-            *current_line_ptr += 1;
-            // self.draw_scanline(bus);
         }
 
         return None;
     }
 
-    fn update_ldc_status(&mut self, bus: &mut Bus) {
-        if !self.is_lcd_enabled(bus) {
-            self.scanline_counter = 456;
-            bus.write_byte(LCD_Y_CORD_REGISTER, 0);
-            // reset status bits
-            let status = bus.read_byte(LDC_STATUS_REGISTER) & 0xFC;
-            bus.write_byte(LDC_STATUS_REGISTER, status);
+    fn get_current_scanline(&self, bus: &Bus) -> u8 {
+        return bus.read_byte(LCD_Y_CORD_REGISTER);
+    }
 
-            self.set_lcd_mode(bus, LcdMode::VBlank);
-            return;
-        }
+    fn update_ldc_status(&mut self, bus: &mut Bus, cycles: usize) {
+        self.cycles += cycles;
 
-        let current_line = bus.read_byte(LCD_Y_CORD_REGISTER);
         let current_mode = self.get_lcd_mode(bus);
-        let mode: LcdMode;
-
-        if current_line >= VISIBLE_SCAN_LINES {
-            mode = LcdMode::VBlank;
-        } else if self.scanline_counter >= MODE_2_BOUNDS {
-            mode = LcdMode::SearchingSpritesAtt;
-        } else if self.scanline_counter >= MODE_3_BOUNDS {
-            mode = LcdMode::TransferringDataToLcdDriver;
-        } else {
-            mode = LcdMode::HBlank;
+        let updated_mode = self.update_mode(bus, &current_mode);
+        //  TODO: check this every line instead
+        let is_coincidence = self.set_lyc_equal_ly(bus);
+        if current_mode != updated_mode
+            && self.is_interrupt_requested(bus, &updated_mode, is_coincidence)
+        {
+            interrupt_flags::request_interrupt(bus, InterruptType::LCDStat);
         }
+    }
 
-        if mode != current_mode {
-            let interrupt_requested = self.is_interrupt_requested(bus, &mode);
-            if interrupt_requested {
-                interrupt_flags::request_interrupt(bus, InterruptType::LCDStat);
+    fn update_mode(&mut self, bus: &mut Bus, current_mode: &LcdMode) -> LcdMode {
+        let current_line_ptr = bus.get_pointer(LCD_Y_CORD_REGISTER);
+        match current_mode {
+            LcdMode::VBlank => {
+                if self.cycles >= SCAN_LINE_TIME {
+                    self.cycles -= SCAN_LINE_TIME;
+                    *current_line_ptr += 1;
+
+                    if *current_line_ptr == SCAN_LINES {
+                        *current_line_ptr = 0;
+                        self.cycles = 0;
+                        self.set_lcd_mode(bus, LcdMode::OAMRead);
+                        return LcdMode::OAMRead;
+                    }
+                    // else remain in vertical blank
+                }
             }
-            self.set_lcd_mode(bus, mode);
-        }
+            LcdMode::HBlank => {
+                if self.cycles >= HBLANK_TIME {
+                    self.cycles -= HBLANK_TIME;
+                    *current_line_ptr += 1;
 
-        let ly_compare = bus.read_byte(LCD_Y_CORD_COMPARE_REGISTER);
-        if current_line == ly_compare {
-            self.set_lyc_equal_ly(bus, true);
-
-            if self.is_lyc_equal_ly_interrupt_enabled(bus) {
-                interrupt_flags::request_interrupt(bus, InterruptType::LCDStat);
+                    if *current_line_ptr == VISIBLE_SCAN_LINES - 1 {
+                        self.set_lcd_mode(bus, LcdMode::VBlank);
+                        interrupt_flags::request_interrupt(bus, InterruptType::VBlank);
+                        return LcdMode::VBlank;
+                    } else {
+                        self.set_lcd_mode(bus, LcdMode::OAMRead);
+                        return LcdMode::OAMRead;
+                    }
+                }
             }
-        } else if self.is_lyc_equal_ly(bus) {
-            self.set_lyc_equal_ly(bus, false);
+            LcdMode::OAMRead => {
+                if self.cycles >= OAM_READ_TIME {
+                    self.cycles -= OAM_READ_TIME;
+                    self.set_lcd_mode(bus, LcdMode::VRAMRead);
+                    return LcdMode::VRAMRead;
+                }
+            }
+            LcdMode::VRAMRead => {
+                if self.cycles >= VRAM_READ_TIME {
+                    self.cycles -= VRAM_READ_TIME;
+                    self.set_lcd_mode(bus, LcdMode::HBlank);
+                    return LcdMode::HBlank;
+                }
+            }
         }
+
+        return current_mode.clone();
     }
 
-    fn draw_scanline(&self, bus: &mut Bus) {
-        todo!();
-    }
+    fn set_lyc_equal_ly(&self, bus: &mut Bus) -> bool {
+        let lyc = bus.read_byte(LCD_Y_CORD_COMPARE_REGISTER);
+        let ly = bus.read_byte(LCD_Y_CORD_REGISTER);
+        let equal = lyc == ly;
 
-    fn is_lyc_equal_ly_interrupt_enabled(&self, bus: &Bus) -> bool {
-        let byte = bus.read_byte(LDC_STATUS_REGISTER);
-        return test_bit(byte, LcdStatus::LycIntSelect as u8);
-    }
-
-    fn is_lyc_equal_ly(&self, bus: &Bus) -> bool {
-        let byte = bus.read_byte(LDC_STATUS_REGISTER);
-        return test_bit(byte, LcdStatus::LycEqLy as u8);
-    }
-
-    fn set_lyc_equal_ly(&self, bus: &mut Bus, equal: bool) {
         let mut byte = bus.read_byte(LDC_STATUS_REGISTER);
         if equal {
             byte |= 1 << (LcdStatus::LycEqLy as u8);
         } else {
             byte &= !(1 << (LcdStatus::LycEqLy as u8));
         }
+
         bus.write_byte(LDC_STATUS_REGISTER, byte);
+        return equal;
     }
 
     fn set_lcd_mode(&self, bus: &mut Bus, mode: LcdMode) {
@@ -183,13 +178,19 @@ impl Lcd {
         bus.write_byte(LDC_STATUS_REGISTER, byte);
     }
 
-    fn is_interrupt_requested(&self, bus: &Bus, mode: &LcdMode) -> bool {
+    fn is_interrupt_requested(&self, bus: &Bus, mode: &LcdMode, is_coincidence: bool) -> bool {
         let byte = bus.read_byte(LDC_STATUS_REGISTER);
+        if is_coincidence {
+            if test_bit(byte, LcdStatus::LycIntSelect as u8) {
+                return true;
+            }
+        }
+
         return match mode {
             LcdMode::HBlank => test_bit(byte, LcdStatus::Mode0IntSelect as u8),
             LcdMode::VBlank => test_bit(byte, LcdStatus::Mode1IntSelect as u8),
-            LcdMode::SearchingSpritesAtt => test_bit(byte, LcdStatus::Mode2IntSelect as u8),
-            LcdMode::TransferringDataToLcdDriver => false,
+            LcdMode::OAMRead => test_bit(byte, LcdStatus::Mode2IntSelect as u8),
+            LcdMode::VRAMRead => false,
         };
     }
 
@@ -199,7 +200,7 @@ impl Lcd {
 
     fn is_lcd_enabled(&self, bus: &Bus) -> bool {
         let byte = self.read_from_lcd_control_register(bus);
-        return test_bit(byte, LcdControl::LdcEnable.into());
+        return test_bit(byte, LcdControl::LcdEnable.into());
     }
 
     fn is_window_enabled(&self, bus: &Bus) -> bool {
@@ -230,8 +231,8 @@ impl Lcd {
         return match status {
             0 => LcdMode::HBlank,
             1 => LcdMode::VBlank,
-            2 => LcdMode::SearchingSpritesAtt,
-            3 => LcdMode::TransferringDataToLcdDriver,
+            2 => LcdMode::OAMRead,
+            3 => LcdMode::VRAMRead,
             _ => panic!("Invalid LCD mode"),
         };
     }
