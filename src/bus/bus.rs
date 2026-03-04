@@ -50,7 +50,7 @@ impl Bus {
             0xC000..=0xDFFF => self.wram[index - 0xC000],
             0xE000..=0xFDFF => unimplemented!("Echo RAM is not implemented"),
             0xFE00..=0xFE9F => self.oam[index - 0xFE00],
-            0xFEA0..=0xFEFF => unimplemented!("Not usable memory area"),
+            0xFEA0..=0xFEFF => 0xFF, // Non usable memory area, when read, returns 0xFF
             0xFF00..=0xFF7F => self.io_regs[index - 0xFF00],
             0xFF80..=0xFFFE => self.hram[index - 0xFF80],
             0xFFFF => self.ie_reg,
@@ -80,16 +80,15 @@ impl Bus {
             0xFE00..=0xFE9F => self.oam[index - 0xFE00] = value,
             0xFEA0..=0xFEFF => {
                 // Not usable memory area
-                unimplemented!("Not usable memory area");
             }
             // TODO: Need to handle changes in the clock frequency
             0xFF04 => {
                 // GameBoy does not allow writing to the divider register, it resets it to zero when written to
-                self.io_regs[index - 0xFF04] = 0;
+                self.io_regs[index - 0xFF00] = 0;
             }
             0xFF44 => {
                 // LY register, writing to it resets it to 0
-                self.io_regs[index - 0xFF44] = 0;
+                self.io_regs[index - 0xFF00] = 0;
             }
             0xFF00..=0xFF7F => self.io_regs[index - 0xFF00] = value,
             0xFF80..=0xFFFE => self.hram[index - 0xFF80] = value,
