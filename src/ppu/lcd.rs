@@ -72,8 +72,12 @@ impl Lcd {
 
     pub fn update_graphics(&mut self, bus: &mut Bus, cycles: usize) -> Option<[u8; BUFFER_SIZE]> {
         if !self.is_lcd_enabled(bus) {
+            self.cycles = 0;
+            bus.write_byte(LCD_Y_CORD_REGISTER, 0);
+            self.set_lcd_mode(bus, LcdMode::OAMRead);
             return None;
         }
+
         self.update_ldc_status(bus, cycles);
 
         let current_scan_line = self.get_current_scanline(bus);
@@ -114,7 +118,6 @@ impl Lcd {
 
                     if *current_line_ptr == SCAN_LINES {
                         *current_line_ptr = 0;
-                        self.cycles = 0;
                         self.set_lcd_mode(bus, LcdMode::OAMRead);
                         return LcdMode::OAMRead;
                     }
