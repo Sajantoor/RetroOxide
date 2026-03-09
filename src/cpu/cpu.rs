@@ -291,7 +291,13 @@ impl CPU {
                         match p {
                             0 => self.ret(),
                             1 => self.reti(),
-                            2 => self.jp(self.registers.get_hl()),
+                            2 => {
+                                // TODO: this is a hack
+                                let cycles = self.cycles.get();
+                                self.jp(self.registers.get_hl());
+                                self.cycles.set(cycles + 1);
+                                return;
+                            }
                             3 => {
                                 // LD SP,HL
                                 let hl = self.registers.get_hl();
@@ -334,7 +340,7 @@ impl CPU {
                         let addr = self.next_word();
                         let value = self.bus.read_byte(addr);
                         self.registers.a.set(value);
-                        self.increment_cycles(3);
+                        self.increment_cycles(4);
                         return;
                     }
                     _ => panic!("Y has range 0 - 7, got {:?}", y),
@@ -771,8 +777,11 @@ impl CPU {
         let pointer = self.get_register_from_table_r(i);
         let value = pointer.wrapping_sub(1);
         *pointer = value;
-        self.increment_cycles(1);
-
+        if i == 6 {
+            self.increment_cycles(2);
+        } else {
+            self.increment_cycles(1);
+        }
         // set flags
         self.registers.set_zero_flag(value == 0);
         self.registers.set_subtraction_flag(true);
@@ -783,7 +792,11 @@ impl CPU {
         let pointer = self.get_register_from_table_r(i);
         let value = pointer.wrapping_add(1);
         *pointer = value;
-        self.increment_cycles(1);
+        if i == 6 {
+            self.increment_cycles(2);
+        } else {
+            self.increment_cycles(1);
+        }
 
         // set flags
         self.registers.set_zero_flag(value == 0);
