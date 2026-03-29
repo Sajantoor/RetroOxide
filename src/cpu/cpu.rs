@@ -2,7 +2,9 @@ use std::cell::Cell;
 
 use crate::bus::bus::Bus;
 use crate::bus::interrupt_flags::{self, INTERRUPT_ENABLE_ADDR, INTERRUPT_FLAG_ADDR};
+use crate::bus::timer::{DIVIDER_REGISTER, TAC_REGISTER};
 use crate::cpu::registers::Registers;
+use crate::ppu::lcd::{LCD_CONTROL_REGISTER, LDC_STATUS_REGISTER};
 use crate::rom::cartridge::Cartridge;
 
 #[derive(Debug)]
@@ -21,8 +23,6 @@ pub struct CPU {
     ime_flag: bool,
     // Used to delay the effect of EI instruction by one instruction
     previous_ime_flag: bool,
-
-    ticks: usize,
 }
 
 /**
@@ -36,7 +36,6 @@ impl CPU {
             bus: Bus::new(cartridge),
             ime_flag: false, // IME is unset (interrupts are disabled) when the game starts running.
             previous_ime_flag: false,
-            ticks: 0,
         };
 
         cpu.boot();
@@ -45,12 +44,13 @@ impl CPU {
 
     fn boot(&mut self) {
         // https://gbdev.io/pandocs/Power_Up_Sequence.html?highlight=boot#hardware-registers
-        self.bus.write_byte(0xFF07, 0x01);
-        self.bus.write_byte(0xFF40, 0x91);
-        self.bus.write_byte(0xFF45, 0x00);
-        self.bus.write_byte(0xFF44, 0x91); // LY
+        self.bus.write_byte(DIVIDER_REGISTER, 0xAB);
+        self.bus.write_byte(TAC_REGISTER, 0xF8);
+        self.bus.write_byte(INTERRUPT_FLAG_ADDR, 0xE1);
+        self.bus.write_byte(LCD_CONTROL_REGISTER, 0x91);
+        self.bus.write_byte(LDC_STATUS_REGISTER, 0x85);
+        self.bus.write_byte(0xFF46, 0xFF);
         self.bus.write_byte(0xFF47, 0xFC);
-        self.bus.write_byte(0xFF48, 0xFF);
     }
 
     #[allow(dead_code, reason = "Debugging function")]

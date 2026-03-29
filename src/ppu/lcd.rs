@@ -7,8 +7,8 @@ use crate::{
     utils::test_bit,
 };
 
-const LCD_CONTROL_REGISTER: u16 = 0xFF40;
-const LDC_STATUS_REGISTER: u16 = 0xFF41;
+pub const LCD_CONTROL_REGISTER: u16 = 0xFF40;
+pub const LDC_STATUS_REGISTER: u16 = 0xFF41;
 const LCD_Y_CORD_REGISTER: u16 = 0xFF44;
 const LCD_Y_CORD_COMPARE_REGISTER: u16 = 0xFF45;
 const BG_PALETTE: u16 = 0xFF47;

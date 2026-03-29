@@ -9,7 +9,7 @@ use crate::{
     utils::{self},
 };
 
-const DIVIDER_REGISTER: u16 = 0xFF04;
+pub const DIVIDER_REGISTER: u16 = 0xFF04;
 const TIMA_REGISTER: u16 = 0xFF05; // timer counter register
 const TMA_REGISTER: u16 = 0xFF06; // timer modulo 
 pub const TAC_REGISTER: u16 = 0xFF07; // timer control 
