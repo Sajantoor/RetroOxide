@@ -1,12 +1,13 @@
 use crate::mappers::mapper::Mapper;
 use crate::mappers::mbc1::Mbc1;
+use crate::mappers::no_mbc::NoMbc;
 use crate::rom::cartridge::Cartridge;
 
 #[derive(Debug)]
 pub struct Bus {
     // 16KiB ROM bank 00
     // 16 KiB from cartridge, switchable banks
-    mapper: Mbc1,
+    mapper: NoMbc,
     // 8KiB Video RAM
     vram: [u8; 0x2000],
     // 8KiB External RAM
@@ -33,7 +34,7 @@ pub struct Bus {
 impl Bus {
     pub fn new(cartridge: &Cartridge) -> Self {
         Bus {
-            mapper: Mbc1::new(cartridge),
+            mapper: NoMbc::new(cartridge),
             vram: [0; 0x2000],
             ram: [0; 0x2000],
             wram: [0; 0x2000],
@@ -87,10 +88,6 @@ impl Bus {
             }
             0xFF04 => {
                 // GameBoy does not allow writing to the divider register, it resets it to zero when written to
-                self.io_regs[index - 0xFF00] = 0;
-            }
-            0xFF44 => {
-                // LY register, writing to it resets it to 0
                 self.io_regs[index - 0xFF00] = 0;
             }
             0xFF00..=0xFF7F => {

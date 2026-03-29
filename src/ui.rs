@@ -24,7 +24,7 @@ struct App<'a> {
 
 impl<'a> ApplicationHandler for App<'a> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let size = LogicalSize::new(SCREEN_WIDTH, SCREEN_HEIGHT);
+        let size = LogicalSize::new(SCREEN_WIDTH as u16 * 4, SCREEN_HEIGHT as u16 * 4);
 
         let window = event_loop
             .create_window(
