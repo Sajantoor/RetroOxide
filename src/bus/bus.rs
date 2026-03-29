@@ -25,6 +25,9 @@ pub struct Bus {
 
     // Interrupt Enable Register
     ie_reg: u8,
+
+    // temporary value
+    temp: u8,
 }
 
 impl Bus {
@@ -38,6 +41,7 @@ impl Bus {
             io_regs: [0; 0x80],
             hram: [0; 0x7F],
             ie_reg: 0,
+            temp: 0,
         }
     }
 
@@ -81,7 +85,6 @@ impl Bus {
             0xFEA0..=0xFEFF => {
                 // Not usable memory area
             }
-            // TODO: Need to handle changes in the clock frequency
             0xFF04 => {
                 // GameBoy does not allow writing to the divider register, it resets it to zero when written to
                 self.io_regs[index - 0xFF00] = 0;
@@ -90,7 +93,10 @@ impl Bus {
                 // LY register, writing to it resets it to 0
                 self.io_regs[index - 0xFF00] = 0;
             }
-            0xFF00..=0xFF7F => self.io_regs[index - 0xFF00] = value,
+            0xFF00..=0xFF7F => {
+                // TODO: Need to handle changes in the clock frequency
+                self.io_regs[index - 0xFF00] = value;
+            }
             0xFF80..=0xFFFE => self.hram[index - 0xFF80] = value,
             0xFFFF => self.ie_reg = value,
             _ => {
@@ -110,7 +116,12 @@ impl Bus {
     pub fn get_pointer(&mut self, addr: u16) -> &mut u8 {
         let index = addr as usize;
         match index {
-            0x0000..=0x7FFF => panic!("Cannot get mutable pointer to ROM area"),
+            0x0000..=0x7FFF => {
+                // ROM is read-only, cannot return a mutable pointer
+                // fake returning a mutable pointer
+                self.temp = self.mapper.read(addr);
+                return &mut self.temp;
+            }
             0x8000..=0x9FFF => &mut self.vram[index - 0x8000],
             0xA000..=0xBFFF => &mut self.ram[index - 0xA000],
             0xC000..=0xDFFF => &mut self.wram[index - 0xC000],

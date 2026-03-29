@@ -12,12 +12,13 @@ use crate::{
 const DIVIDER_REGISTER: u16 = 0xFF04;
 const TIMA_REGISTER: u16 = 0xFF05; // timer counter register
 const TMA_REGISTER: u16 = 0xFF06; // timer modulo 
-const TAC_REGISTER: u16 = 0xFF07; // timer control 
+pub const TAC_REGISTER: u16 = 0xFF07; // timer control 
 
 #[derive(Debug)]
 pub struct Timer {
     counter: i32,
     divider_counter: i32,
+    current_clock: u8,
 }
 
 impl Timer {
@@ -25,21 +26,27 @@ impl Timer {
         Self {
             counter: 0,
             divider_counter: 0,
+            current_clock: 0,
         }
     }
 
-    pub fn update_timer(&mut self, bus: &mut Bus, cycles: usize) {
+    pub fn update_timer(&mut self, bus: &mut Bus, mut cycles: usize) {
+        cycles = cycles * 4;
         let cycles = cycles.try_into().unwrap();
-
         self.update_divider_register(bus, cycles);
 
         if !self.is_clock_enabled(bus) {
             return;
         }
 
+        // TODO: optimize this later so it's doesn't do this check so often
+        if self.get_clock_frequency(bus) != self.current_clock {
+            self.select_clock(bus);
+        }
+
         self.counter -= cycles;
 
-        if self.counter < 0 {
+        if self.counter <= 0 {
             let timer_value = bus.read_byte(TIMA_REGISTER);
             if timer_value == 0xFF {
                 let tma_value = bus.read_byte(TMA_REGISTER);
@@ -61,6 +68,7 @@ impl Timer {
 
     fn select_clock(&mut self, bus: &mut Bus) {
         let value = self.get_clock_frequency(bus);
+        self.current_clock = value;
 
         match value {
             0 => self.counter = 256,
@@ -81,8 +89,8 @@ impl Timer {
 
     fn update_divider_register(&mut self, bus: &mut Bus, cycles: i32) {
         self.divider_counter += cycles;
-        if self.divider_counter >= 0xFF {
-            self.divider_counter = self.divider_counter - 0xFF;
+        if self.divider_counter >= 256 {
+            self.divider_counter = self.divider_counter - 256;
             // TODO: This is a hack since we're not allowed to write to the divider register directly
             let byte = bus.get_pointer(DIVIDER_REGISTER);
             *byte = byte.wrapping_add(1);

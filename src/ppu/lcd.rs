@@ -98,64 +98,40 @@ impl Lcd {
         self.cycles += cycles;
 
         let current_mode = self.get_lcd_mode(bus);
-        let updated_mode = self.update_mode(bus, &current_mode);
-        //  TODO: check this every line instead
+        let updated_mode = self.update_mode(bus);
         let is_coincidence = self.set_lyc_equal_ly(bus);
-        if current_mode != updated_mode
-            && self.is_interrupt_requested(bus, &updated_mode, is_coincidence)
-        {
-            interrupt_flags::request_interrupt(bus, InterruptType::LCDStat);
+
+        if current_mode != updated_mode {
+            self.set_lcd_mode(bus, updated_mode);
+            // TODO: check this every line instead
+            if self.is_interrupt_requested(bus, &updated_mode, is_coincidence) {
+                interrupt_flags::request_interrupt(bus, InterruptType::LCDStat);
+            }
         }
     }
 
-    fn update_mode(&mut self, bus: &mut Bus, current_mode: &LcdMode) -> LcdMode {
+    fn update_mode(&mut self, bus: &mut Bus) -> LcdMode {
         let current_line_ptr = bus.get_pointer(LCD_Y_CORD_REGISTER);
-        match current_mode {
-            LcdMode::VBlank => {
-                if self.cycles >= SCAN_LINE_TIME {
-                    self.cycles -= SCAN_LINE_TIME;
-                    *current_line_ptr += 1;
 
-                    if *current_line_ptr == SCAN_LINES {
-                        *current_line_ptr = 0;
-                        self.set_lcd_mode(bus, LcdMode::OAMRead);
-                        return LcdMode::OAMRead;
-                    }
-                    // else remain in vertical blank
-                }
-            }
-            LcdMode::HBlank => {
-                if self.cycles >= HBLANK_TIME {
-                    self.cycles -= HBLANK_TIME;
-                    *current_line_ptr += 1;
-
-                    if *current_line_ptr == VISIBLE_SCAN_LINES - 1 {
-                        self.set_lcd_mode(bus, LcdMode::VBlank);
-                        interrupt_flags::request_interrupt(bus, InterruptType::VBlank);
-                        return LcdMode::VBlank;
-                    } else {
-                        self.set_lcd_mode(bus, LcdMode::OAMRead);
-                        return LcdMode::OAMRead;
-                    }
-                }
-            }
-            LcdMode::OAMRead => {
-                if self.cycles >= OAM_READ_TIME {
-                    self.cycles -= OAM_READ_TIME;
-                    self.set_lcd_mode(bus, LcdMode::VRAMRead);
-                    return LcdMode::VRAMRead;
-                }
-            }
-            LcdMode::VRAMRead => {
-                if self.cycles >= VRAM_READ_TIME {
-                    self.cycles -= VRAM_READ_TIME;
-                    self.set_lcd_mode(bus, LcdMode::HBlank);
-                    return LcdMode::HBlank;
-                }
-            }
+        if self.cycles >= SCAN_LINE_TIME {
+            self.cycles -= SCAN_LINE_TIME;
+            *current_line_ptr = (*current_line_ptr + 1) % SCAN_LINES;
         }
 
-        return current_mode.clone();
+        if *current_line_ptr >= VISIBLE_SCAN_LINES {
+            interrupt_flags::request_interrupt(bus, InterruptType::VBlank);
+            return LcdMode::VBlank;
+        }
+
+        if self.cycles <= OAM_READ_TIME {
+            return LcdMode::OAMRead;
+        }
+
+        if self.cycles <= OAM_READ_TIME + VRAM_READ_TIME {
+            return LcdMode::VRAMRead;
+        }
+
+        return LcdMode::HBlank;
     }
 
     fn set_lyc_equal_ly(&self, bus: &mut Bus) -> bool {

@@ -1,4 +1,7 @@
-use crate::{mappers::mbc1::Mbc1, rom::cartridge::Cartridge};
+use crate::{
+    mappers::{mbc1::Mbc1, no_mbc::NoMbc},
+    rom::cartridge::Cartridge,
+};
 
 pub trait Mapper {
     fn new(cartridge: &Cartridge) -> Self;

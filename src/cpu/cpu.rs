@@ -21,6 +21,8 @@ pub struct CPU {
     ime_flag: bool,
     // Used to delay the effect of EI instruction by one instruction
     previous_ime_flag: bool,
+
+    ticks: usize,
 }
 
 /**
@@ -34,6 +36,7 @@ impl CPU {
             bus: Bus::new(cartridge),
             ime_flag: false, // IME is unset (interrupts are disabled) when the game starts running.
             previous_ime_flag: false,
+            ticks: 0,
         };
 
         cpu.boot();
@@ -41,20 +44,19 @@ impl CPU {
     }
 
     fn boot(&mut self) {
-        // https://gbdev.io/pandocs/Power_Up_Sequence.html?highlight=boot#cgb0
-        self.bus.write_byte(0xFF07, 0xF8); // TAC
-        self.bus.write_byte(0xFF0F, 0xE1); // IF
-        self.bus.write_byte(0xFF40, 0x91); // LCDC
-        self.bus.write_byte(0xFF41, 0x85); // STAT
+        // https://gbdev.io/pandocs/Power_Up_Sequence.html?highlight=boot#hardware-registers
+        self.bus.write_byte(0xFF07, 0x01);
+        self.bus.write_byte(0xFF40, 0x91);
+        self.bus.write_byte(0xFF45, 0x00);
         self.bus.write_byte(0xFF44, 0x91); // LY
-        self.bus.write_byte(0xFF46, 0xFF); // DMA
-        self.bus.write_byte(0xFF47, 0xFC); // BGP
+        self.bus.write_byte(0xFF47, 0xFC);
+        self.bus.write_byte(0xFF48, 0xFF);
     }
 
     #[allow(dead_code, reason = "Debugging function")]
     fn print_state(&self) {
-        println!(
-            "A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X}",
+        print!(
+            "A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X} LY:{:02X} LYC:{:02X} LCDC:{:02X} LCDS:{:02X} DIV:{:02X} TIMA:{:02X} TMA:{:02X} TAC:{:02X} IF:{:02X} IE:{:02X} Ticks:{:?} ",
             self.registers.a.get(),
             self.registers.f.get(),
             self.registers.b.get(),
@@ -68,7 +70,19 @@ impl CPU {
             self.bus.read_byte(self.registers.pc.get()),
             self.bus.read_byte(self.registers.pc.get() + 1),
             self.bus.read_byte(self.registers.pc.get() + 2),
-            self.bus.read_byte(self.registers.pc.get() + 3)
+            self.bus.read_byte(self.registers.pc.get() + 3),
+            // LY register
+            self.bus.read_byte(0xFF44),
+            self.bus.read_byte(0xFF45),
+            self.bus.read_byte(0xFF40),
+            self.bus.read_byte(0xFF41),
+            self.bus.read_byte(0xFF04),
+            self.bus.read_byte(0xFF05),
+            self.bus.read_byte(0xFF06),
+            self.bus.read_byte(0xFF07),
+            self.bus.read_byte(0xFF0F),
+            self.bus.read_byte(0xFFFF),
+            self.cycles.get() * 4,
         );
     }
 
@@ -77,9 +91,14 @@ impl CPU {
         self.previous_ime_flag = self.ime_flag;
 
         let opcode = self.next_byte();
+        print!("Opcode: {:02X} ", opcode);
+        self.print_state();
         self.handle_instruction(opcode);
 
         let cycles_diff = self.cycles.get() - cycles_before;
+        print!("Cycles: {:?}", cycles_diff * 4);
+        println!();
+
         return cycles_diff;
     }
 
@@ -144,7 +163,6 @@ impl CPU {
                             // Add instruction
                             let value = self.get_register_from_table_rp(p);
                             self.add_hl(value);
-                            self.increment_cycles(2)
                         }
                     }
                 }
