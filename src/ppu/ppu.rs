@@ -16,6 +16,8 @@ const TILE_SIZE: usize = 8;
 
 const NUM_TILES_HIGH: usize = SCREEN_HEIGHT as usize / TILE_SIZE;
 const NUM_TILES_WIDTH: usize = SCREEN_WIDTH as usize / TILE_SIZE;
+const BACKGROUND_SIZE: usize = 256; // the background is 256x256 pixels, but only 160x144 is visible at a time
+const LAYER_WIDTH: usize = BACKGROUND_SIZE / TILE_SIZE;
 
 #[derive(Debug)]
 pub struct PPU {}
@@ -40,7 +42,7 @@ impl PPU {
         // now piece together the tiles
         for ty in 0..NUM_TILES_HIGH {
             for tx in 0..NUM_TILES_WIDTH {
-                let map_num = ty * NUM_TILES_HIGH + tx;
+                let map_num = ty * LAYER_WIDTH + tx;
                 let tile_index = tile_map[map_num];
                 // we should have the tile, otherwise something went wrong, so safe to unwrap here and crash
                 let tile = tile_set.get(&tile_index).unwrap();
@@ -71,7 +73,9 @@ impl PPU {
         // Get the tiles we need from memory and parse them, store them in the set
         let mut tile_set = HashMap::new();
         // TODO: Indexing is a bit weird depending on what this value is
-        let title_data_area_start = lcd.get_bg_window_tile_data_area_start(bus);
+        let tile_data_area_start = lcd.get_bg_window_tile_data_area_start(bus);
+        let is_using_signed_mapping = tile_data_area_start == 0x8800;
+
         for i in 0..TILE_MAP_AREA_SIZE {
             let tile_index = tile_map[i];
             if tile_set.contains_key(&tile_index) {
@@ -79,7 +83,16 @@ impl PPU {
             }
 
             let memory_index = (tile_index as u16) * BYTES_PER_TILE;
-            let addr = title_data_area_start + memory_index;
+            let addr = if is_using_signed_mapping {
+                // TODO: this works but is kind of messy
+                let signed_index = (tile_index as i8) as i16;
+                (((signed_index as i16) * BYTES_PER_TILE as i16) as u16)
+                    .overflowing_add(0x9000)
+                    .0
+            } else {
+                tile_data_area_start + memory_index
+            };
+
             let tile = Tile::new(bus, addr);
             tile_set.insert(tile_index, tile);
         }
@@ -88,9 +101,9 @@ impl PPU {
     }
 
     fn get_background_tile_map(&self, bus: &Bus, lcd: &Lcd) -> [u8; TILE_MAP_AREA_SIZE] {
-        let tile_map_start: u16 = lcd.get_bg_tile_map_area_start(bus);
+        let tile_map_start = lcd.get_bg_tile_map_area_start(bus);
         // Tile map stores the index of the tile to be displayed
-        let mut tile_map: [u8; TILE_MAP_AREA_SIZE] = [0; TILE_MAP_AREA_SIZE];
+        let mut tile_map = [0; TILE_MAP_AREA_SIZE];
 
         for i in 0..TILE_MAP_AREA_SIZE as u16 {
             let addr = tile_map_start + i;
