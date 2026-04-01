@@ -25,6 +25,9 @@ const HBLANK_TIME: usize = 204 / 4;
 const OAM_READ_TIME: usize = 80 / 4;
 const VRAM_READ_TIME: usize = 172 / 4;
 
+pub(crate) const BG_TILE_DATA_AREA_START_BANK_0: u16 = 0x8000;
+pub(crate) const BG_TILE_DATA_AREA_START_BANK_1: u16 = 0x8800;
+
 #[derive(Debug, PartialEq, Eq, num_enum::IntoPrimitive)]
 #[repr(u8)]
 enum LcdControl {
@@ -213,7 +216,11 @@ impl Lcd {
     pub fn get_bg_window_tile_data_area_start(&self, bus: &Bus) -> u16 {
         let byte = self.read_from_lcd_control_register(bus);
         let value = test_bit(byte, LcdControl::BgWindowTitleArea.into());
-        if value { 0x8000 } else { 0x8800 }
+        if value {
+            BG_TILE_DATA_AREA_START_BANK_0
+        } else {
+            BG_TILE_DATA_AREA_START_BANK_1
+        }
     }
 
     pub fn get_bg_tile_map_area_start(&self, bus: &Bus) -> u16 {
