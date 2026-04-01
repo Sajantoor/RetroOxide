@@ -54,7 +54,8 @@ impl CPU {
     }
 
     #[allow(dead_code, reason = "Debugging function")]
-    fn print_state(&self) {
+    fn print_state(&self, opcode: u8) {
+        print!("Opcode: {:02X} ", opcode);
         print!(
             "A:{:02X} F:{:02X} B:{:02X} C:{:02X} D:{:02X} E:{:02X} H:{:02X} L:{:02X} SP:{:04X} PC:{:04X} PCMEM:{:02X},{:02X},{:02X},{:02X} LY:{:02X} LYC:{:02X} LCDC:{:02X} LCDS:{:02X} DIV:{:02X} TIMA:{:02X} TMA:{:02X} TAC:{:02X} IF:{:02X} IE:{:02X} Ticks:{:?} ",
             self.registers.a.get(),
@@ -91,13 +92,17 @@ impl CPU {
         self.previous_ime_flag = self.ime_flag;
 
         let opcode = self.next_byte();
-        print!("Opcode: {:02X} ", opcode);
-        self.print_state();
-        self.handle_instruction(opcode);
+        if cfg!(feature = "debug") {
+            self.print_state(opcode);
+        }
 
+        self.handle_instruction(opcode);
         let cycles_diff = self.cycles.get() - cycles_before;
-        print!("Cycles: {:?}", cycles_diff * 4);
-        println!();
+
+        if cfg!(feature = "debug") {
+            print!("Cycles: {:?}", cycles_diff * 4);
+            println!();
+        }
 
         return cycles_diff;
     }
