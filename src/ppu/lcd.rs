@@ -12,6 +12,8 @@ pub const LDC_STATUS_REGISTER: u16 = 0xFF41;
 const LCD_Y_CORD_REGISTER: u16 = 0xFF44;
 const LCD_Y_CORD_COMPARE_REGISTER: u16 = 0xFF45;
 const BG_PALETTE: u16 = 0xFF47;
+const BG_SCROLL_Y: u16 = 0xFF42;
+const BG_SCROLL_X: u16 = 0xFF43;
 
 pub(crate) const BUFFER_SIZE: usize = (SCREEN_HEIGHT as usize * SCREEN_WIDTH as usize) * 4; // 4 for RGBA
 pub(crate) const SCREEN_HEIGHT: u8 = 160;
@@ -249,6 +251,12 @@ impl Lcd {
     pub fn get_background_palette(&self, bus: &Bus) -> [u8; 4] {
         let byte = bus.read_byte(BG_PALETTE);
         return self.decode_palette(byte);
+    }
+
+    pub fn get_background_scroll(&self, bus: &Bus) -> (u8, u8) {
+        let x = bus.read_byte(BG_SCROLL_X);
+        let y = bus.read_byte(BG_SCROLL_Y);
+        (x, y)
     }
 
     fn decode_palette(&self, byte: u8) -> [u8; 4] {

@@ -14,8 +14,6 @@ const TILE_MAP_AREA_SIZE: usize = 0x0400;
 const TILE_SIZE: usize = 8;
 // Tile maps are 1 byte indexes
 
-const NUM_TILES_HIGH: usize = SCREEN_HEIGHT as usize / TILE_SIZE;
-const NUM_TILES_WIDTH: usize = SCREEN_WIDTH as usize / TILE_SIZE;
 const BACKGROUND_SIZE: usize = 256; // the background is 256x256 pixels, but only 160x144 is visible at a time
 const LAYER_WIDTH: usize = BACKGROUND_SIZE / TILE_SIZE;
 
@@ -40,29 +38,27 @@ impl PPU {
         let tile_map = self.get_background_tile_map(bus, lcd);
         let tile_set = self.get_background_tile_set(bus, lcd, &tile_map);
         let palette = lcd.get_background_palette(bus);
+        let (x_offset, y_offset) = lcd.get_background_scroll(bus);
 
         // now piece together the tiles
-        for ty in 0..NUM_TILES_HIGH {
-            for tx in 0..NUM_TILES_WIDTH {
-                let map_num = ty * LAYER_WIDTH + tx;
+        for py in 0..SCREEN_HEIGHT as usize {
+            let y = (py + y_offset as usize) % BACKGROUND_SIZE;
+
+            for px in 0..SCREEN_WIDTH as usize {
+                let x = (px + x_offset as usize) % BACKGROUND_SIZE;
+                let map_num = (y / TILE_SIZE) * LAYER_WIDTH + (x / TILE_SIZE);
                 let tile_index = tile_map[map_num];
                 // we should have the tile, otherwise something went wrong, so safe to unwrap here and crash
                 let tile = tile_set.get(&tile_index).unwrap();
 
-                // Loop through the pixels in the tile, get the colour from the
-                // palette and copy it into the buffer
-                for y in 0..TILE_SIZE {
-                    let row = tile.get_row(y);
-                    let pixel_y = y + ty * TILE_SIZE;
+                let tile_index_x = x % TILE_SIZE;
+                let tile_index_y = y % TILE_SIZE;
+                let row = tile.get_row(tile_index_y);
 
-                    for x in 0..TILE_SIZE {
-                        let pixel_x = x + tx * TILE_SIZE;
-                        let value = row[x];
-                        let palette_index = palette[value as usize];
-                        let colour = SYSTEM_PALETTE[palette_index as usize];
-                        self.copy_colour_into_buffer(&mut buffer, &colour, pixel_x, pixel_y);
-                    }
-                }
+                let value = row[tile_index_x];
+                let palette_index = palette[value as usize];
+                let colour = SYSTEM_PALETTE[palette_index as usize];
+                self.copy_colour_into_buffer(&mut buffer, &colour, px, py);
             }
         }
 
