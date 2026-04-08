@@ -27,22 +27,30 @@ impl PPU {
         PPU {}
     }
 
-    pub fn render_bg(&self, bus: &Bus, lcd: &Lcd) -> [u8; BUFFER_SIZE] {
-        if !lcd.is_bg_window_enabled(bus) {
-            return [0xFF; BUFFER_SIZE];
+    pub fn render(&self, bus: &Bus, lcd: &Lcd) -> [u8; BUFFER_SIZE] {
+        let mut buffer = [0; BUFFER_SIZE];
+        self.render_background(bus, lcd, &mut buffer);
+        self.render_window(bus, lcd, &mut buffer);
+        return buffer;
+    }
+
+    fn render_background(&self, bus: &Bus, lcd: &Lcd, buffer: &mut [u8; BUFFER_SIZE]) {
+        if !lcd.is_bg_enabled(bus) {
+            buffer.fill(0xF);
+            return;
         }
 
         // to render the background, we must see which tile map area to use, then
         // parse the tile maps and then parse the tile data area
-        let mut buffer = [0; BUFFER_SIZE];
         let tile_map = self.get_background_tile_map(bus, lcd);
-        let tile_set = self.get_background_tile_set(bus, lcd, &tile_map);
-        let palette = lcd.get_background_palette(bus);
+        let tile_set = self.get_background_window_tile_set(bus, lcd, &tile_map);
+        let palette = lcd.get_background_window_palette(bus);
         let (x_offset, y_offset) = lcd.get_background_scroll(bus);
 
         // now piece together the tiles
         for py in 0..SCREEN_HEIGHT as usize {
             let y = (py + y_offset as usize) % BACKGROUND_SIZE;
+            let tile_index_y = y % TILE_SIZE;
 
             for px in 0..SCREEN_WIDTH as usize {
                 let x = (px + x_offset as usize) % BACKGROUND_SIZE;
@@ -52,17 +60,43 @@ impl PPU {
                 let tile = tile_set.get(&tile_index).unwrap();
 
                 let tile_index_x = x % TILE_SIZE;
-                let tile_index_y = y % TILE_SIZE;
                 let row = tile.get_row(tile_index_y);
 
                 let value = row[tile_index_x];
                 let palette_index = palette[value as usize];
                 let colour = SYSTEM_PALETTE[palette_index as usize];
-                self.copy_colour_into_buffer(&mut buffer, &colour, px, py);
+                self.copy_colour_into_buffer(buffer, &colour, px, py);
             }
         }
+    }
 
-        return buffer;
+    fn render_window(&self, bus: &Bus, lcd: &Lcd, buffer: &mut [u8; BUFFER_SIZE]) {
+        if !lcd.is_window_enabled(bus) {
+            return;
+        }
+
+        let tile_map = self.get_window_tile_map(bus, lcd);
+        let tile_set = self.get_background_window_tile_set(bus, lcd, &tile_map);
+        let palette = lcd.get_background_window_palette(bus);
+        let (x_offset, y_offset) = lcd.get_window_position(bus);
+
+        for py in (y_offset as usize)..(SCREEN_HEIGHT as usize) {
+            let tile_index_y = py % TILE_SIZE;
+
+            for px in (x_offset as usize)..(SCREEN_WIDTH as usize) {
+                let tile_index_x = px % TILE_SIZE;
+                let map_num = (py / TILE_SIZE) * LAYER_WIDTH + (px / TILE_SIZE);
+                let tile_index = tile_map[map_num];
+                let tile = tile_set.get(&tile_index).unwrap();
+
+                let row = tile.get_row(tile_index_y);
+
+                let value = row[tile_index_x];
+                let palette_index = palette[value as usize];
+                let colour = SYSTEM_PALETTE[palette_index as usize];
+                self.copy_colour_into_buffer(buffer, &colour, px, py);
+            }
+        }
     }
 
     fn copy_colour_into_buffer(
@@ -78,7 +112,12 @@ impl PPU {
         }
     }
 
-    fn get_background_tile_set(&self, bus: &Bus, lcd: &Lcd, tile_map: &[u8]) -> HashMap<u8, Tile> {
+    fn get_background_window_tile_set(
+        &self,
+        bus: &Bus,
+        lcd: &Lcd,
+        tile_map: &[u8],
+    ) -> HashMap<u8, Tile> {
         // Get the tiles we need from memory and parse them, store them in the set
         let mut tile_set = HashMap::new();
         let tile_data_area_start = lcd.get_bg_window_tile_data_area_start(bus);
@@ -109,13 +148,25 @@ impl PPU {
     }
 
     fn get_background_tile_map(&self, bus: &Bus, lcd: &Lcd) -> [u8; TILE_MAP_AREA_SIZE] {
-        let tile_map_start = lcd.get_bg_tile_map_area_start(bus);
+        self.get_tile_map(bus, lcd, true)
+    }
+
+    fn get_window_tile_map(&self, bus: &Bus, lcd: &Lcd) -> [u8; TILE_MAP_AREA_SIZE] {
+        self.get_tile_map(bus, lcd, false)
+    }
+
+    fn get_tile_map(&self, bus: &Bus, lcd: &Lcd, is_background: bool) -> [u8; TILE_MAP_AREA_SIZE] {
+        let tile_map_start = if is_background {
+            lcd.get_bg_tile_map_area_start(bus)
+        } else {
+            lcd.get_window_tile_map_area_start(bus)
+        };
         // Tile map stores the index of the tile to be displayed
         let mut tile_map = [0; TILE_MAP_AREA_SIZE];
 
         for i in 0..TILE_MAP_AREA_SIZE as u16 {
             let addr = tile_map_start + i;
-            let tile_index: u8 = bus.read_byte(addr);
+            let tile_index = bus.read_byte(addr);
             tile_map[i as usize] = tile_index;
         }
 

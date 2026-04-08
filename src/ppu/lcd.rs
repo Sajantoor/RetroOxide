@@ -14,6 +14,8 @@ const LCD_Y_CORD_COMPARE_REGISTER: u16 = 0xFF45;
 const BG_PALETTE: u16 = 0xFF47;
 const BG_SCROLL_Y: u16 = 0xFF42;
 const BG_SCROLL_X: u16 = 0xFF43;
+const WINDOW_X_CORD: u16 = 0xFF4A;
+const WINDOW_Y_CORD: u16 = 0xFF4B;
 
 pub(crate) const BUFFER_SIZE: usize = (SCREEN_HEIGHT as usize * SCREEN_WIDTH as usize) * 4; // 4 for RGBA
 pub(crate) const SCREEN_HEIGHT: u8 = 160;
@@ -29,6 +31,11 @@ const VRAM_READ_TIME: usize = 172 / 4;
 
 pub(crate) const BG_TILE_DATA_AREA_START_BANK_0: u16 = 0x8000;
 pub(crate) const BG_TILE_DATA_AREA_START_BANK_1: u16 = 0x8800;
+const BG_TILE_MAP_AREA_START_BANK_0: u16 = 0x9C00;
+const BG_TILE_MAP_AREA_START_BANK_1: u16 = 0x9800;
+
+const WINDOW_TILE_MAP_AREA_BANK_0: u16 = 0x9800;
+const WINDOW_TILE_MAP_AREA_BANK_1: u16 = 0x9C00;
 
 #[derive(Debug, PartialEq, Eq, num_enum::IntoPrimitive)]
 #[repr(u8)]
@@ -40,7 +47,7 @@ enum LcdControl {
     BgTileMapArea = 3,
     ObjSize = 2,
     ObjEnable = 1,
-    BgWindowEnable = 0,
+    BgEnabled = 0,
 }
 
 enum LcdStatus {
@@ -85,7 +92,7 @@ impl Lcd {
         let current_scan_line = self.get_current_scanline(bus);
 
         if current_scan_line == VISIBLE_SCAN_LINES {
-            let buffer = self.ppu.render_bg(bus, &self);
+            let buffer = self.ppu.render(bus, &self);
             return Some(buffer);
         }
 
@@ -210,9 +217,19 @@ impl Lcd {
         return test_bit(byte, LcdControl::LcdEnable.into());
     }
 
-    fn is_window_enabled(&self, bus: &Bus) -> bool {
+    pub fn is_window_enabled(&self, bus: &Bus) -> bool {
         let byte = self.read_from_lcd_control_register(bus);
         return test_bit(byte, LcdControl::WindowEnable.into());
+    }
+
+    pub fn get_window_tile_map_area_start(&self, bus: &Bus) -> u16 {
+        let byte = self.read_from_lcd_control_register(bus);
+        let value = test_bit(byte, LcdControl::WindowTitleMapArea.into());
+        if value {
+            WINDOW_TILE_MAP_AREA_BANK_1
+        } else {
+            WINDOW_TILE_MAP_AREA_BANK_0
+        }
     }
 
     pub fn get_bg_window_tile_data_area_start(&self, bus: &Bus) -> u16 {
@@ -228,12 +245,16 @@ impl Lcd {
     pub fn get_bg_tile_map_area_start(&self, bus: &Bus) -> u16 {
         let byte = self.read_from_lcd_control_register(bus);
         let value = test_bit(byte, LcdControl::BgTileMapArea.into());
-        if value { 0x9C00 } else { 0x9800 }
+        if value {
+            BG_TILE_MAP_AREA_START_BANK_0
+        } else {
+            BG_TILE_MAP_AREA_START_BANK_1
+        }
     }
 
-    pub fn is_bg_window_enabled(&self, bus: &Bus) -> bool {
+    pub fn is_bg_enabled(&self, bus: &Bus) -> bool {
         let byte = self.read_from_lcd_control_register(bus);
-        return test_bit(byte, LcdControl::BgWindowEnable.into());
+        return test_bit(byte, LcdControl::BgEnabled.into());
     }
 
     fn get_lcd_mode(&self, bus: &Bus) -> LcdMode {
@@ -248,7 +269,7 @@ impl Lcd {
         };
     }
 
-    pub fn get_background_palette(&self, bus: &Bus) -> [u8; 4] {
+    pub fn get_background_window_palette(&self, bus: &Bus) -> [u8; 4] {
         let byte = bus.read_byte(BG_PALETTE);
         return self.decode_palette(byte);
     }
@@ -256,6 +277,12 @@ impl Lcd {
     pub fn get_background_scroll(&self, bus: &Bus) -> (u8, u8) {
         let x = bus.read_byte(BG_SCROLL_X);
         let y = bus.read_byte(BG_SCROLL_Y);
+        (x, y)
+    }
+
+    pub fn get_window_position(&self, bus: &Bus) -> (u8, u8) {
+        let x = bus.read_byte(WINDOW_X_CORD);
+        let y = bus.read_byte(WINDOW_Y_CORD);
         (x, y)
     }
 
