@@ -55,12 +55,21 @@ impl<'a> ApplicationHandler for App<'a> {
     ) {
         match event {
             WindowEvent::CloseRequested => {
+                self.context.stop();
                 event_loop.exit();
             }
 
             WindowEvent::RedrawRequested => {
                 if let Some(pixels) = self.pixels.as_mut() {
                     pixels.render().unwrap();
+                }
+            }
+
+            WindowEvent::Focused(is_focused) => {
+                if !is_focused && self.context.is_running() {
+                    self.context.pause();
+                } else if is_focused && !self.context.is_running() {
+                    self.context.start();
                 }
             }
 

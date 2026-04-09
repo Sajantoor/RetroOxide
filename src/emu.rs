@@ -28,7 +28,11 @@ impl Context {
     pub fn start(&mut self) {
         self.is_running = true;
         self.is_paused = false;
-        // return self.run();
+    }
+
+    pub fn stop(&mut self) {
+        // TODO: Save the game here
+        self.is_running = false;
     }
 
     pub fn pause(&mut self) {
@@ -36,25 +40,18 @@ impl Context {
     }
 
     pub fn is_running(&self) -> bool {
-        return self.is_running;
+        return self.is_running && !self.is_paused;
     }
 
     pub fn step(&mut self) -> Option<[u8; BUFFER_SIZE]> {
+        if !self.is_running() {
+            return None;
+        }
+
         let cycle_diff = self.cpu.step();
         self.timer.update_timer(&mut self.cpu.bus, cycle_diff);
         let buffer = self.lcd.update_graphics(&mut self.cpu.bus, cycle_diff);
         self.cpu.handle_interrupts();
         return buffer;
-    }
-
-    fn run(&mut self) {
-        while self.is_running {
-            if !self.is_paused {
-                self.step();
-                // delay
-            } else {
-                // sleep
-            }
-        }
     }
 }
