@@ -83,19 +83,16 @@ impl<'a> App<'a> {
     }
 
     fn get_next_frame(&mut self) {
-        while self.context.is_running() {
-            let buffer = self.context.step();
-            if let Some(buffer) = buffer {
-                let frame = self.pixels.as_mut().unwrap().frame_mut();
-                // update frame
-                // if there's a change in the frame, only then render it.
-                // Otherwise, no point rendering.
-                // Check if there's a change in the frame
-                if frame != buffer {
-                    frame.copy_from_slice(&buffer);
-                    self.window.as_ref().unwrap().request_redraw();
-                    break;
-                }
+        let buffer = self.context.step();
+        if let Some(buffer) = buffer {
+            let frame = self.pixels.as_mut().unwrap().frame_mut();
+            // update frame
+            // if there's a change in the frame, only then render it.
+            // Otherwise, no point rendering.
+            // Check if there's a change in the frame
+            if frame != buffer {
+                frame.copy_from_slice(&buffer);
+                self.window.as_ref().unwrap().request_redraw();
             }
         }
     }
