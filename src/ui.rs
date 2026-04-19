@@ -4,10 +4,12 @@ use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::Key;
 use winit::window::Window;
 use winit::{application::ApplicationHandler, event_loop::ControlFlow};
 
 use crate::emu::Context;
+use crate::joypad::joypad::Button;
 use crate::ppu::lcd::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 #[derive(Debug)]
@@ -73,12 +75,46 @@ impl<'a> ApplicationHandler for App<'a> {
                 }
             }
 
+            WindowEvent::KeyboardInput {
+                device_id: _device_id,
+                event,
+                is_synthetic: _is_synthetic,
+            } => match event.logical_key {
+                // Key::Named(named_key) => match named_key {
+                //     NamedKey::Escape => {
+                //         self.context.toggle_pause();
+                //     }
+                //     _ => {}
+                // },
+                Key::Character(str) => {
+                    let button = key_to_button(&str);
+                    if let Some(button) = button {
+                        self.context.press_button(button, event.state.is_pressed());
+                    }
+                }
+                _ => {}
+            },
+
             _ => {}
         }
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         self.get_next_frame();
+    }
+}
+
+fn key_to_button(key: &str) -> Option<Button> {
+    match key {
+        "w" => Some(Button::Up),
+        "a" => Some(Button::Left),
+        "s" => Some(Button::Down),
+        "d" => Some(Button::Right),
+        "j" => Some(Button::A),
+        "k" => Some(Button::B),
+        "u" => Some(Button::Select),
+        "i" => Some(Button::Start),
+        _ => None,
     }
 }
 

@@ -1,6 +1,10 @@
 use crate::{
-    bus::timer::Timer,
+    bus::{
+        interrupt_flags::{self, InterruptType},
+        timer::Timer,
+    },
     cpu::cpu::CPU,
+    joypad::joypad::Button,
     ppu::lcd::{BUFFER_SIZE, Lcd},
     rom::cartridge::Cartridge,
 };
@@ -53,5 +57,13 @@ impl Context {
         let buffer = self.lcd.update_graphics(&mut self.cpu.bus, cycle_diff);
         self.cpu.handle_interrupts();
         return buffer;
+    }
+
+    pub fn press_button(&mut self, button: Button, is_pressed: bool) {
+        let should_request_interrupt = self.cpu.bus.joypad.press_button(button, is_pressed);
+
+        if should_request_interrupt {
+            interrupt_flags::request_interrupt(&mut self.cpu.bus, InterruptType::Joypad);
+        }
     }
 }

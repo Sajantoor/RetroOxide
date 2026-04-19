@@ -4,6 +4,7 @@ use crate::bus::bus::Bus;
 use crate::bus::interrupt_flags::{self, INTERRUPT_ENABLE_ADDR, INTERRUPT_FLAG_ADDR};
 use crate::bus::timer::{DIVIDER_REGISTER, TAC_REGISTER};
 use crate::cpu::registers::Registers;
+use crate::joypad::joypad::JOYPAD_REGISTER;
 use crate::ppu::lcd::{LCD_CONTROL_REGISTER, LDC_STATUS_REGISTER};
 use crate::rom::cartridge::Cartridge;
 
@@ -49,6 +50,7 @@ impl CPU {
         self.bus.write_byte(INTERRUPT_FLAG_ADDR, 0xE1);
         self.bus.write_byte(LCD_CONTROL_REGISTER, 0x91);
         self.bus.write_byte(LDC_STATUS_REGISTER, 0x85);
+        self.bus.write_byte(JOYPAD_REGISTER as u16, 0xCF);
         self.bus.write_byte(0xFF46, 0xFF);
         self.bus.write_byte(0xFF47, 0xFC);
     }

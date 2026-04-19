@@ -1,3 +1,4 @@
+use crate::joypad::joypad::{JOYPAD_REGISTER, Joypad};
 use crate::mappers::mapper::Mapper;
 use crate::mappers::mbc1::Mbc1;
 use crate::mappers::no_mbc::NoMbc;
@@ -29,6 +30,8 @@ pub struct Bus {
 
     // temporary value
     temp: u8,
+
+    pub joypad: Joypad,
 }
 
 impl Bus {
@@ -43,6 +46,7 @@ impl Bus {
             hram: [0; 0x7F],
             ie_reg: 0,
             temp: 0,
+            joypad: Joypad::new(),
         }
     }
 
@@ -56,6 +60,7 @@ impl Bus {
             0xE000..=0xFDFF => unimplemented!("Echo RAM is not implemented"),
             0xFE00..=0xFE9F => self.oam[index - 0xFE00],
             0xFEA0..=0xFEFF => 0xFF, // Non usable memory area, when read, returns 0xFF
+            JOYPAD_REGISTER => self.joypad.read(),
             0xFF00..=0xFF7F => self.io_regs[index - 0xFF00],
             0xFF80..=0xFFFE => self.hram[index - 0xFF80],
             0xFFFF => self.ie_reg,
@@ -89,6 +94,9 @@ impl Bus {
             0xFF04 => {
                 // GameBoy does not allow writing to the divider register, it resets it to zero when written to
                 self.io_regs[index - 0xFF00] = 0;
+            }
+            JOYPAD_REGISTER => {
+                self.joypad.write(value);
             }
             0xFF00..=0xFF7F => {
                 // TODO: Need to handle changes in the clock frequency

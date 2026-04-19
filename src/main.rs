@@ -1,6 +1,7 @@
 mod bus;
 mod cpu;
 mod emu;
+mod joypad;
 mod mappers;
 mod ppu;
 mod rom;
