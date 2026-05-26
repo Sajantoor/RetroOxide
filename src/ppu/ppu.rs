@@ -1,8 +1,12 @@
 use crate::{
     bus::bus::Bus,
     ppu::{
-        lcd::{BG_TILE_DATA_AREA_START_BANK_1, BUFFER_SIZE, Lcd, SCREEN_HEIGHT, SCREEN_WIDTH},
+        lcd::{
+            BG_TILE_DATA_AREA_START_BANK_0, BG_TILE_DATA_AREA_START_BANK_1, BUFFER_SIZE, Lcd,
+            SCREEN_HEIGHT, SCREEN_WIDTH,
+        },
         palette::SYSTEM_PALETTE,
+        sprite,
         tile::Tile,
     },
 };
@@ -31,6 +35,7 @@ impl PPU {
         let mut buffer = [0; BUFFER_SIZE];
         self.render_background(bus, lcd, &mut buffer);
         self.render_window(bus, lcd, &mut buffer);
+        self.render_sprites(bus, lcd, &mut buffer);
         return buffer;
     }
 
@@ -95,6 +100,49 @@ impl PPU {
                 let palette_index = palette[value as usize];
                 let colour = SYSTEM_PALETTE[palette_index as usize];
                 self.copy_colour_into_buffer(buffer, &colour, px, py);
+            }
+        }
+    }
+
+    fn render_sprites(&self, bus: &Bus, lcd: &Lcd, buffer: &mut [u8; BUFFER_SIZE]) {
+        if !lcd.is_sprites_enabled(bus) {
+            return;
+        }
+
+        let is_sprite_8_by_16 = lcd.is_8_by_16_sprite(bus);
+        let sprites = sprite::read_sprite_attribute_table(bus);
+
+        for sprite in sprites.iter().flatten() {
+            let addr =
+                BG_TILE_DATA_AREA_START_BANK_0 + (BYTES_PER_TILE * (sprite.tile_index as u16));
+
+            let tile = Tile::new(bus, addr);
+            let palette = lcd.get_sprite_palette(bus, sprite.attributes.dmg_palette);
+
+            // paint the tile on the buffer
+            for y in 0..TILE_SIZE {
+                let row = tile.get_row(y);
+                let y_cord = y + sprite.get_y() as usize;
+                if y_cord < 0 || y_cord >= SCREEN_HEIGHT as usize {
+                    continue;
+                }
+
+                for x in 0..TILE_SIZE {
+                    let x_cord = x + sprite.get_x() as usize;
+                    if x_cord < 0 || x_cord >= SCREEN_WIDTH as usize {
+                        continue;
+                    }
+
+                    let value = row[x];
+                    // then it's transparent, ignore
+                    if value == 0 {
+                        continue;
+                    }
+
+                    let palette_index = palette[value as usize];
+                    let colour = SYSTEM_PALETTE[palette_index as usize];
+                    self.copy_colour_into_buffer(buffer, &colour, x_cord as usize, y_cord as usize);
+                }
             }
         }
     }

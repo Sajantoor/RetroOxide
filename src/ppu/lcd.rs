@@ -252,6 +252,19 @@ impl Lcd {
         }
     }
 
+    /**
+     * Is either 8x8 sprite or 8x16 sprite
+     */
+    pub fn is_8_by_16_sprite(&self, bus: &Bus) -> bool {
+        let byte = self.read_from_lcd_control_register(bus);
+        return test_bit(byte, LcdControl::ObjSize.into());
+    }
+
+    pub fn is_sprites_enabled(&self, bus: &Bus) -> bool {
+        let byte = self.read_from_lcd_control_register(bus);
+        return test_bit(byte, LcdControl::ObjEnable.into());
+    }
+
     pub fn is_bg_enabled(&self, bus: &Bus) -> bool {
         let byte = self.read_from_lcd_control_register(bus);
         return test_bit(byte, LcdControl::BgEnabled.into());
@@ -271,6 +284,12 @@ impl Lcd {
 
     pub fn get_background_window_palette(&self, bus: &Bus) -> [u8; 4] {
         let byte = bus.read_byte(BG_PALETTE);
+        return self.decode_palette(byte);
+    }
+
+    pub fn get_sprite_palette(&self, bus: &Bus, use_palette_2: bool) -> [u8; 4] {
+        let palette_addr = if use_palette_2 { 0xFF49 } else { 0xFF48 };
+        let byte = bus.read_byte(palette_addr);
         return self.decode_palette(byte);
     }
 
