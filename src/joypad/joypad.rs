@@ -59,10 +59,6 @@ impl Joypad {
             return 0x3F; // bit 5 and 4 are 1, all buttons are 1
         }
 
-        if self.is_buttons_selected && self.is_dpad_selected {
-            panic!("Both buttons and dpad is selected");
-        }
-
         // bit 4 is 0
         if self.is_dpad_selected {
             // buttons are on the higher nibble of button_pressed, then select bit 5
