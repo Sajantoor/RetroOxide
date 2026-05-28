@@ -55,7 +55,6 @@ pub fn read_sprite_attribute_table(bus: &Bus) -> [Option<Sprite>; NUM_SPRITES] {
 
         output[index] = Some(sprite);
         index += 1;
-        println!("index {:?}", sprite);
     }
 
     return output;

@@ -1,8 +1,10 @@
 use crate::joypad::joypad::{JOYPAD_REGISTER, Joypad};
 use crate::mappers::mapper::Mapper;
-use crate::mappers::mbc1::Mbc1;
 use crate::mappers::no_mbc::NoMbc;
 use crate::rom::cartridge::Cartridge;
+
+const DMA_REGISTER: u16 = 0xFF46;
+const OAM_START: u16 = 0xFE00;
 
 #[derive(Debug)]
 pub struct Bus {
@@ -99,6 +101,9 @@ impl Bus {
                 self.joypad.write(value);
             }
             0xFF00..=0xFF7F => {
+                if addr == DMA_REGISTER {
+                    self.do_dma_transfer(value);
+                }
                 // TODO: Need to handle changes in the clock frequency
                 self.io_regs[index - 0xFF00] = value;
             }
@@ -137,6 +142,15 @@ impl Bus {
             0xFF80..=0xFFFE => &mut self.hram[index - 0xFF80],
             0xFFFF => &mut self.ie_reg,
             _ => panic!("Cannot get mutable pointer to unmapped memory area"),
+        }
+    }
+
+    fn do_dma_transfer(&mut self, value: u8) {
+        // Value is the source address divided by 100
+        let addr = (value as u16) << 8;
+        // copy from the source address to the OAM, 0xA0 bytes are copied
+        for i in 0..0xA0 {
+            self.write_byte(OAM_START + i, self.read_byte(addr + i));
         }
     }
 }
