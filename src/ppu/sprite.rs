@@ -32,12 +32,12 @@ enum AttributeBits {
 }
 
 impl Sprite {
-    pub fn get_x(&self) -> u8 {
-        self.x_position
+    pub fn get_x(&self) -> i16 {
+        i16::from(self.x_position) - 8 // Object’s horizontal position on the screen + 8
     }
 
-    pub fn get_y(&self) -> u8 {
-        self.y_position
+    pub fn get_y(&self) -> i16 {
+        i16::from(self.y_position) - 16 // Object’s vertical position on the screen + 16
     }
 }
 

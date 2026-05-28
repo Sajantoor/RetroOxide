@@ -122,14 +122,14 @@ impl PPU {
             // paint the tile on the buffer
             for y in 0..TILE_SIZE {
                 let row = tile.get_row(y);
-                let y_cord = y + sprite.get_y() as usize;
-                if y_cord < 0 || y_cord >= SCREEN_HEIGHT as usize {
+                let y_cord = y as i16 + sprite.get_y();
+                if y_cord >= i16::from(SCREEN_HEIGHT) {
                     continue;
                 }
 
                 for x in 0..TILE_SIZE {
-                    let x_cord = x + sprite.get_x() as usize;
-                    if x_cord < 0 || x_cord >= SCREEN_WIDTH as usize {
+                    let x_cord = x as i16 + sprite.get_x();
+                    if 0 > x_cord || x_cord >= i16::from(SCREEN_WIDTH) {
                         continue;
                     }
 
