@@ -110,25 +110,41 @@ impl PPU {
         }
 
         let is_sprite_8_by_16 = lcd.is_8_by_16_sprite(bus);
+        let sprite_y_size = if is_sprite_8_by_16 { 16 } else { TILE_SIZE };
+
         let sprites = sprite::read_sprite_attribute_table(bus);
 
         for sprite in sprites.iter().flatten() {
-            let addr =
-                BG_TILE_DATA_AREA_START_BANK_0 + (BYTES_PER_TILE * (sprite.tile_index as u16));
+            let addr = BG_TILE_DATA_AREA_START_BANK_0
+                + (BYTES_PER_TILE * (sprite.get_tile_index() as u16));
 
             let tile = Tile::new(bus, addr);
-            let palette = lcd.get_sprite_palette(bus, sprite.attributes.dmg_palette);
+            let palette = lcd.get_sprite_palette(bus, sprite.get_attributes().get_dmg_palette());
 
             // paint the tile on the buffer
-            for y in 0..TILE_SIZE {
+            for y in 0..sprite_y_size {
                 let row = tile.get_row(y);
-                let y_cord = y as i16 + sprite.get_y();
+                let attributes = sprite.get_attributes();
+
+                let y_cord = sprite.get_y()
+                    + if attributes.is_y_flipped() {
+                        ((sprite_y_size - 1) - y) as i16
+                    } else {
+                        y as i16
+                    };
+
                 if y_cord >= i16::from(SCREEN_HEIGHT) {
                     continue;
                 }
 
                 for x in 0..TILE_SIZE {
-                    let x_cord = x as i16 + sprite.get_x();
+                    let x_cord = sprite.get_x()
+                        + if attributes.is_x_flipped() {
+                            ((TILE_SIZE - 1) - x) as i16
+                        } else {
+                            x as i16
+                        };
+
                     if 0 > x_cord || x_cord >= i16::from(SCREEN_WIDTH) {
                         continue;
                     }
@@ -139,9 +155,23 @@ impl PPU {
                         continue;
                     }
 
+                    let x_cord = x_cord as usize;
+                    let y_cord = y_cord as usize;
+
+                    if attributes.is_low_priority()
+                        && !self.does_current_colour_equal(
+                            buffer,
+                            &SYSTEM_PALETTE[0], // white
+                            x_cord,
+                            y_cord,
+                        )
+                    {
+                        continue;
+                    }
+
                     let palette_index = palette[value as usize];
                     let colour = SYSTEM_PALETTE[palette_index as usize];
-                    self.copy_colour_into_buffer(buffer, &colour, x_cord as usize, y_cord as usize);
+                    self.copy_colour_into_buffer(buffer, &colour, x_cord, y_cord);
                 }
             }
         }
@@ -158,6 +188,33 @@ impl PPU {
         for i in 0..4 {
             buffer[buffer_index + i] = colour[i];
         }
+    }
+
+    fn get_current_colour_in_buffer(
+        &self,
+        buffer: &mut [u8; BUFFER_SIZE],
+        x: usize,
+        y: usize,
+    ) -> [u8; 4] {
+        let mut output = [0; 4];
+
+        let buffer_index = 4 * (y * SCREEN_WIDTH as usize + x);
+        for i in 0..4 {
+            output[i] = buffer[buffer_index + i];
+        }
+
+        return output;
+    }
+
+    fn does_current_colour_equal(
+        &self,
+        buffer: &mut [u8; BUFFER_SIZE],
+        colour: &[u8; 4],
+        x: usize,
+        y: usize,
+    ) -> bool {
+        let current_colour = self.get_current_colour_in_buffer(buffer, x, y);
+        *colour == current_colour
     }
 
     fn get_background_window_tile_set(

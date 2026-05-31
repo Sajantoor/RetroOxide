@@ -7,10 +7,10 @@ pub const NUM_SPRITES: usize = 40;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Sprite {
-    y_position: u8,     // byte 0
-    x_position: u8,     // 1
-    pub tile_index: u8, // 2
-    pub attributes: Attributes,
+    y_position: u8, // byte 0
+    x_position: u8, // 1
+    tile_index: u8, // 2
+    attributes: Attributes,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -18,7 +18,7 @@ pub struct Attributes {
     priority: bool,
     y_flip: bool,
     x_flip: bool,
-    pub dmg_palette: bool, // if this bit is 0, palette is from 0xFF48 otherwise 0xFF49
+    dmg_palette: bool, // if this bit is 0, palette is from 0xFF48 otherwise 0xFF49
 }
 
 #[derive(num_enum::IntoPrimitive)]
@@ -38,6 +38,14 @@ impl Sprite {
 
     pub fn get_y(&self) -> i16 {
         i16::from(self.y_position) - 16 // Object’s vertical position on the screen + 16
+    }
+
+    pub fn get_attributes(&self) -> Attributes {
+        self.attributes
+    }
+
+    pub fn get_tile_index(&self) -> u8 {
+        self.tile_index
     }
 }
 
@@ -68,5 +76,21 @@ impl Attributes {
             x_flip: test_bit(byte, AttributeBits::XFlip.into()),
             dmg_palette: test_bit(byte, AttributeBits::DmgPalette.into()),
         }
+    }
+
+    pub fn is_low_priority(&self) -> bool {
+        self.priority
+    }
+
+    pub fn is_y_flipped(&self) -> bool {
+        self.y_flip
+    }
+
+    pub fn is_x_flipped(&self) -> bool {
+        self.x_flip
+    }
+
+    pub fn get_dmg_palette(&self) -> bool {
+        self.dmg_palette
     }
 }
