@@ -18,11 +18,11 @@ const WINDOW_X_CORD: u16 = 0xFF4A;
 const WINDOW_Y_CORD: u16 = 0xFF4B;
 
 pub(crate) const BUFFER_SIZE: usize = (SCREEN_HEIGHT as usize * SCREEN_WIDTH as usize) * 4; // 4 for RGBA
-pub(crate) const SCREEN_HEIGHT: u8 = 160;
-pub(crate) const SCREEN_WIDTH: u8 = 144;
+pub(crate) const SCREEN_HEIGHT: u8 = 144;
+pub(crate) const SCREEN_WIDTH: u8 = 160;
 
 const SCAN_LINES: u8 = 154;
-const VISIBLE_SCAN_LINES: u8 = SCREEN_WIDTH;
+const VISIBLE_SCAN_LINES: u8 = SCREEN_HEIGHT;
 
 const SCAN_LINE_TIME: usize = 114; // 456 dots per scanline, 4 dots per M cycle
 const HBLANK_TIME: usize = 204 / 4;
